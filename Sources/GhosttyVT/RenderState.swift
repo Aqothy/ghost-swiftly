@@ -92,6 +92,17 @@ package final class RenderState: Sendable {
 
     // MARK: Renderer side
 
+    /// Marks every row dirty, for a renderer that lost its cells (new fonts
+    /// or colors).
+    package func redrawAll() {
+        native.withLock { native in
+            var full = GHOSTTY_RENDER_STATE_DIRTY_FULL
+            ghostty_render_state_set(native.state, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &full)
+            native.pending = true
+        }
+        wake()
+    }
+
     /// Takes what changed since the last call, or nil when nothing did.
     package func takeUpdate() -> RenderUpdate? {
         native.withLock { native -> RenderUpdate? in

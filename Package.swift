@@ -16,7 +16,8 @@ let package = Package(
         .target(
             name: "GhosttyTerminal",
             dependencies: ["GhosttyVT"],
-            resources: [.copy("Resources/Fonts")]
+            // Compiled at runtime, so building needs no Metal toolchain.
+            resources: [.copy("Resources/Fonts"), .copy("Renderer/shaders.metal")]
         ),
         .testTarget(name: "GhosttyTerminalTests", dependencies: ["GhosttyTerminal"]),
         .testTarget(

@@ -1,0 +1,17 @@
+import GhosttyVT
+
+/// What a view sends to whoever runs the program. The view never answers
+/// the program's queries; only user input comes out.
+@MainActor
+public protocol TerminalIO: AnyObject {
+    /// Input for the program, in order: keys, pastes, mouse and focus
+    /// reports, already encoded for the program's modes.
+    func send(_ bytes: [UInt8])
+
+    /// The grid the view wants. With ``TerminalConfiguration/GridPolicy/fitView``
+    /// the view has already resized its terminal; resize the PTY to match.
+    /// With ``TerminalConfiguration/GridPolicy/host``, ask the host; the view
+    /// keeps drawing the host's grid until it resizes the terminal. A resize
+    /// requested before typing always arrives before the typed bytes.
+    func requestResize(_ grid: Grid)
+}

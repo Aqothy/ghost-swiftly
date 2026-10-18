@@ -34,6 +34,8 @@ public actor Terminal {
     private var renderState: RenderState?
     /// Counts render holds so an expired timer can't end a later hold.
     private var renderHoldGeneration = 0
+    /// The host's colors, re-applied over a restored snapshot's.
+    private var defaultColors = DefaultColors()
     /// Set when output may have changed the mouse modes. Reloading them from
     /// the terminal also forgets the last reported cell
     /// (`ghostty_mouse_encoder_setopt_from_terminal`), so it isn't done per
@@ -126,6 +128,7 @@ public actor Terminal {
         handle = restored
         restoring = restore
         effects.install(on: restored)
+        applyDefaultColors()
         mouseModesStale = true
         renderState?.capture(handle)
     }
@@ -145,6 +148,57 @@ public actor Terminal {
         if page == .finished { self.restoring = nil }
         renderState?.capture(handle)
         return page
+    }
+
+    // MARK: Colors
+
+    /// The colors a program gets until it sets its own (OSC 4/10/11/12):
+    /// usually a theme. A snapshot restore keeps these over the snapshot's.
+    public struct DefaultColors: Sendable, Hashable {
+        public var foreground: RGB?
+        public var background: RGB?
+        public var cursor: RGB?
+        /// Overrides of the built-in 256-color palette, by index.
+        public var palette: [UInt8: RGB]
+
+        public init(foreground: RGB? = nil, background: RGB? = nil, cursor: RGB? = nil, palette: [UInt8: RGB] = [:]) {
+            self.foreground = foreground
+            self.background = background
+            self.cursor = cursor
+            self.palette = palette
+        }
+    }
+
+    public func setDefaultColors(_ colors: DefaultColors) {
+        defaultColors = colors
+        applyDefaultColors()
+        renderState?.capture(handle)
+    }
+
+    private func applyDefaultColors() {
+        func set(_ option: GhosttyTerminalOption, _ color: RGB?) {
+            if var rgb = color.map({ GhosttyColorRgb(r: $0.r, g: $0.g, b: $0.b) }) {
+                ghostty_terminal_set(handle, option, &rgb)
+            } else {
+                ghostty_terminal_set(handle, option, nil)
+            }
+        }
+        set(GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, defaultColors.foreground)
+        set(GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, defaultColors.background)
+        set(GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, defaultColors.cursor)
+        // Start from the built-in palette; a nil value resets to it.
+        ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, nil)
+        guard !defaultColors.palette.isEmpty else { return }
+        var palette = [GhosttyColorRgb](repeating: GhosttyColorRgb(), count: 256)
+        palette.withUnsafeMutableBytes { bytes in
+            _ = ghostty_terminal_get(handle, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE_DEFAULT, bytes.baseAddress)
+        }
+        for (index, color) in defaultColors.palette {
+            palette[Int(index)] = GhosttyColorRgb(r: color.r, g: color.g, b: color.b)
+        }
+        palette.withUnsafeBytes { bytes in
+            _ = ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, bytes.baseAddress)
+        }
     }
 
     // MARK: State

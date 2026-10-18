@@ -1,13 +1,18 @@
 /// An RGB color.
-package struct RGB: Hashable, Sendable {
-    package var r: UInt8
-    package var g: UInt8
-    package var b: UInt8
+public struct RGB: Hashable, Sendable {
+    public var r: UInt8
+    public var g: UInt8
+    public var b: UInt8
 
-    package init(r: UInt8, g: UInt8, b: UInt8) {
+    public init(r: UInt8, g: UInt8, b: UInt8) {
         self.r = r
         self.g = g
         self.b = b
+    }
+
+    /// From 0xRRGGBB.
+    public init(_ hex: UInt32) {
+        self.init(r: UInt8(hex >> 16 & 0xFF), g: UInt8(hex >> 8 & 0xFF), b: UInt8(hex & 0xFF))
     }
 }
 
