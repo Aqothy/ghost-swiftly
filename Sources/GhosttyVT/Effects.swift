@@ -13,7 +13,7 @@ import GhosttyVt
 final class Effects: @unchecked Sendable {
     let continuation: AsyncStream<TerminalEvent>.Continuation
     /// Called with `held` when synchronized output (mode 2026) begins or ends.
-    var renderHold: ((OpaquePointer, Bool) -> Void)?
+    var renderHold: ((Bool) -> Void)?
 
     init(continuation: AsyncStream<TerminalEvent>.Continuation) {
         self.continuation = continuation
@@ -80,7 +80,6 @@ private let clipboardWrite: GhosttyTerminalClipboardWriteFn = { _, userdata, wri
     write.pointee.reply(write, &reply)
 }
 
-private let renderHoldChanged: GhosttyTerminalRenderHoldFn = { terminal, userdata, held in
-    guard let terminal else { return }
-    Effects.from(userdata).renderHold?(terminal, held)
+private let renderHoldChanged: GhosttyTerminalRenderHoldFn = { _, userdata, held in
+    Effects.from(userdata).renderHold?(held)
 }

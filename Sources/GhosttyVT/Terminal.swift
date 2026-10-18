@@ -30,6 +30,10 @@ public actor Terminal {
     private let keyEvent: OpaquePointer
     private let mouseEncoder: OpaquePointer
     private let mouseEvent: OpaquePointer
+    /// The view drawing this terminal, if any.
+    private var renderState: RenderState?
+    /// Counts render holds so an expired timer can't end a later hold.
+    private var renderHoldGeneration = 0
     /// Set when output may have changed the mouse modes. Reloading them from
     /// the terminal also forgets the last reported cell
     /// (`ghostty_mouse_encoder_setopt_from_terminal`), so it isn't done per
@@ -71,6 +75,10 @@ public actor Terminal {
         self.mouseEncoder = mouseEncoder
         self.mouseEvent = mouseEvent
         effects.install(on: handle)
+        effects.renderHold = { [weak self] held in
+            // Effects only fire inside calls on `handle`, on this executor.
+            self?.assumeIsolated { $0.renderHoldChanged(held) }
+        }
     }
 
     isolated deinit {
@@ -94,6 +102,7 @@ public actor Terminal {
             ghostty_terminal_vt_write(handle, base.assumingMemoryBound(to: UInt8.self), buffer.count)
         }
         mouseModesStale = true
+        renderState?.capture(handle)
     }
 
     /// Resizes the grid, reflowing the primary screen. `cellWidth` and
@@ -101,6 +110,7 @@ public actor Terminal {
     /// image protocols read.
     public func resize(to grid: Grid, cellWidth: UInt32 = 1, cellHeight: UInt32 = 1) throws(GhosttyError) {
         try check(ghostty_terminal_resize(handle, grid.columns, grid.rows, cellWidth, cellHeight))
+        renderState?.capture(handle)
     }
 
     /// Replaces the whole terminal with a snapshot's renderable state (its
@@ -117,6 +127,7 @@ public actor Terminal {
         restoring = restore
         effects.install(on: restored)
         mouseModesStale = true
+        renderState?.capture(handle)
     }
 
     /// Prepends the next page of the last snapshot's history.
@@ -132,6 +143,7 @@ public actor Terminal {
             throw error
         }
         if page == .finished { self.restoring = nil }
+        renderState?.capture(handle)
         return page
     }
 
@@ -286,6 +298,42 @@ public actor Terminal {
                 }
             }
         }
+    }
+
+    // MARK: Rendering
+
+    /// Makes `renderState` follow this terminal, replacing any previous one.
+    package func attach(_ renderState: RenderState) {
+        self.renderState = renderState
+        renderState.capture(handle)
+    }
+
+    package func detach(_ renderState: RenderState) {
+        if self.renderState === renderState { self.renderState = nil }
+    }
+
+    private func renderHoldChanged(_ held: Bool) {
+        renderHoldGeneration += 1
+        renderState?.setHeld(held, handle)
+        guard held else { return }
+        // The terminal has no clock, so a program that crashes mid-hold would
+        // freeze the screen; end the hold after a second, as Ghostty does.
+        // Setting the mode directly never fires the callback (ghostty
+        // terminal.h, GhosttyTerminalRenderHoldFn "Timeouts").
+        let generation = renderHoldGeneration
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            await self?.expireRenderHold(generation)
+        }
+    }
+
+    private func expireRenderHold(_ generation: Int) {
+        guard generation == renderHoldGeneration else { return }
+        renderHoldGeneration += 1
+        var mode = GhosttyTerminalModeConfig(mode: Mode.synchronizedOutput.ghostty, value: false)
+        ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_MODE, &mode)
+        renderState?.setHeld(false, handle)
+        renderState?.capture(handle)
     }
 
     // MARK: Helpers
