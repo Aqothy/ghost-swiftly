@@ -44,7 +44,21 @@ public final class TerminalUIView: UIView {
             view.setNeedsLayout()
         }
         setUpGestures()
+        // Another field's keyboard moves this view too. Its first step can
+        // come before the notification; typing still claims the right size.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillMove), name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardDidMove), name: UIResponder.keyboardDidChangeFrameNotification,
+            object: nil)
     }
+
+    /// The keyboard and its accessory bar move in steps, each one a layout;
+    /// a view holding a host's size asks for it once they stop rather than
+    /// at every step.
+    @objc private func keyboardWillMove() { surface.setSizeSettling(true) }
+    @objc private func keyboardDidMove() { surface.setSizeSettling(false) }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -78,13 +92,25 @@ public final class TerminalUIView: UIView {
     public override var canBecomeFirstResponder: Bool { true }
 
     public override func becomeFirstResponder() -> Bool {
-        guard super.becomeFirstResponder() else { return false }
+        // The keyboard and its bar move in, a layout per step, starting
+        // before UIKit posts the keyboard notification.
+        let showsKeyboard = !isFirstResponder
+        if showsKeyboard { surface.setSizeSettling(true) }
+        guard super.becomeFirstResponder() else {
+            if showsKeyboard { surface.setSizeSettling(false) }
+            return false
+        }
         surface.setFocused(true)
         return true
     }
 
     public override func resignFirstResponder() -> Bool {
-        guard super.resignFirstResponder() else { return false }
+        let hidesKeyboard = isFirstResponder
+        if hidesKeyboard { surface.setSizeSettling(true) }
+        guard super.resignFirstResponder() else {
+            if hidesKeyboard { surface.setSizeSettling(false) }
+            return false
+        }
         commitMarkedText()
         control.reset()
         surface.setFocused(false)

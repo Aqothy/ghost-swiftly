@@ -50,6 +50,9 @@ final class TerminalSurface {
     /// the terminal.
     private var requestedGrid: GridSize?
     private var reportedPreferredGrid: GridSize?
+    /// While the view's size is animating (the iOS keyboard), a view that
+    /// holds the size draws each step but asks the host once, at the end.
+    private var sizeSettling = false
     private var inputs: AsyncStream<Input>.Continuation?
     private(set) var focused = false
     private var visible = true
@@ -213,7 +216,7 @@ final class TerminalSurface {
         case .host:
             let preferred = layout.preferredGrid
             // Keep the host in sync while this view holds the size.
-            if let grid = screen?.grid, grid == requestedGrid, preferred != grid {
+            if !sizeSettling, let grid = screen?.grid, grid == requestedGrid, preferred != grid {
                 requestedGrid = preferred
                 io?.requestResize(preferred)
             }
@@ -438,6 +441,14 @@ final class TerminalSurface {
         guard visible != self.visible else { return }
         self.visible = visible
         if let renderer { Task { await renderer.setVisible(visible) } }
+    }
+
+    /// The view's size is animating; when it stops, a view holding the size
+    /// asks the host for the grid it settled at.
+    func setSizeSettling(_ settling: Bool) {
+        guard settling != sizeSettling else { return }
+        sizeSettling = settling
+        if !settling { applyLayout() }
     }
 
     // MARK: Configuration
