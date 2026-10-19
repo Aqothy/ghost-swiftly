@@ -3,8 +3,8 @@
 //
 // A texture atlas: skyline bin packing ("A Thousand Ways to Pack the Bin",
 // Jukka Jylänki, via freetype-gl). Square, packed rows, a 1px border.
-// Confined to the renderer's thread, so the modified/resized counters are
-// plain integers rather than atomics.
+// Confined to the renderer's thread, so the modified counter is a plain
+// integer rather than an atomic.
 
 /// Glyph bitmaps packed into one square texture.
 final class Atlas {
@@ -43,16 +43,14 @@ final class Atlas {
     let format: Format
     /// Incremented on every write, so the GPU copy knows when to re-upload.
     private(set) var modified = 0
-    /// Incremented on every grow, so the GPU texture knows to reallocate.
-    private(set) var resized = 0
     private var nodes: [Node] = []
 
     init(size: UInt32, format: Format) {
         self.size = size
         self.format = format
         data = [UInt8](repeating: 0, count: Int(size) * Int(size) * format.depth)
-        nodes.reserveCapacity(64)
-        clear()
+        // A 1px border avoids sampling artifacts.
+        nodes = [Node(x: 1, y: 1, width: size - 2)]
     }
 
     /// Reserves a region; throws ``Full`` when the atlas must grow first.
@@ -163,15 +161,5 @@ final class Atlas {
         // The new space on the right.
         nodes.append(Node(x: oldSize - 1, y: 1, width: newSize - oldSize))
         modified += 1
-        resized += 1
-    }
-
-    /// Empties the atlas without releasing memory.
-    func clear() {
-        modified += 1
-        for index in data.indices { data[index] = 0 }
-        nodes.removeAll(keepingCapacity: true)
-        // A 1px border avoids sampling artifacts.
-        nodes.append(Node(x: 1, y: 1, width: size - 2))
     }
 }
