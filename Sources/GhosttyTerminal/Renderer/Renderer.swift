@@ -8,6 +8,7 @@
 import Foundation
 import GhosttyVT
 import Metal
+import OSLog
 import QuartzCore
 import Synchronization
 
@@ -147,7 +148,9 @@ actor Renderer {
 
     fileprivate func tick(_ drawable: CAMetalDrawable) {
         if let update = renderState.takeUpdate() {
-            builder.apply(update, focused: focused, blinkVisible: blinkVisible)
+            signposter.withIntervalSignpost("Build", "\(update.rows.count) rows") {
+                builder.apply(update, focused: focused, blinkVisible: blinkVisible)
+            }
             needsDraw = true
             if update.grid != lastGrid {
                 lastGrid = update.grid
@@ -157,7 +160,10 @@ actor Renderer {
         let size = CGSize(width: drawable.texture.width, height: drawable.texture.height)
         if needsDraw || size != lastDrawnSize {
             let geometry = ScreenGeometry(width: Int(size.width), height: Int(size.height), padding: padding)
-            if frameRenderer.draw(builder, geometry: geometry, into: drawable) {
+            let drawn = signposter.withIntervalSignpost("Encode") {
+                frameRenderer.draw(builder, geometry: geometry, into: drawable)
+            }
+            if drawn {
                 needsDraw = false
                 lastDrawnSize = size
             }
@@ -189,6 +195,10 @@ actor Renderer {
         wake()
     }
 }
+
+/// Frame timing for Instruments: Build (cells from an update) and Encode
+/// (buffers and commands) intervals, and each frame's GPU time.
+let signposter = OSSignposter(subsystem: "ghost-swiftly", category: "Renderer")
 
 /// The view's Metal layer, shared with its renderer: the view sets its
 /// geometry on the main thread, and the renderer's display link takes

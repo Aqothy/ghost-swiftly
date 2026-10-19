@@ -11,6 +11,7 @@
 // default): a bgra8Unorm target and non-linear shaders.
 
 import Metal
+import OSLog
 import QuartzCore
 import Synchronization
 
@@ -144,8 +145,10 @@ final class FrameRenderer {
         encoder.endEncoding()
 
         inFlight.count.add(1, ordering: .relaxed)
-        commands.addCompletedHandler { [inFlight] _ in
+        commands.addCompletedHandler { [inFlight] commands in
             inFlight.count.subtract(1, ordering: .releasing)
+            let microseconds = Int((commands.gpuEndTime - commands.gpuStartTime) * 1_000_000)
+            signposter.emitEvent("GPU", "\(microseconds) us")
         }
         finish(commands)
         commands.commit()
