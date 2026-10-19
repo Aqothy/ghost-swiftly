@@ -9,7 +9,7 @@ func events(
     let stream: AsyncStream<TerminalEvent>
     do {
         let terminal = try Terminal(grid: grid)
-        stream = terminal.events
+        stream = await terminal.events()
         try await body(terminal)
     }
     var events: [TerminalEvent] = []

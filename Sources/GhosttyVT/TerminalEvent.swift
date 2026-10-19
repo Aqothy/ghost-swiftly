@@ -1,5 +1,5 @@
 /// Something the program running in a terminal asked for, delivered in
-/// stream order from ``Terminal/events``.
+/// stream order from ``Terminal/events()``.
 public enum TerminalEvent: Sendable, Equatable {
     /// OSC 0 / OSC 2.
     case titleChanged(String)

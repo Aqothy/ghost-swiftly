@@ -11,13 +11,10 @@ import GhosttyVt
 /// `write_pty`: a view never answers the program (queries are the host's job),
 /// which also drops OSC 5522 clipboard acknowledgements.
 final class Effects: @unchecked Sendable {
-    let continuation: AsyncStream<TerminalEvent>.Continuation
+    /// Where events go; nil drops them.
+    var listener: AsyncStream<TerminalEvent>.Continuation?
     /// Called with `held` when synchronized output (mode 2026) begins or ends.
     var renderHold: ((Bool) -> Void)?
-
-    init(continuation: AsyncStream<TerminalEvent>.Continuation) {
-        self.continuation = continuation
-    }
 
     /// Installs every effect on `terminal`. A snapshot restore returns a new
     /// terminal handle, so this runs once per handle.
@@ -49,27 +46,27 @@ private func string(_ terminal: OpaquePointer?, _ data: GhosttyTerminalData) -> 
 }
 
 private let titleChanged: GhosttyTerminalTitleChangedFn = { terminal, userdata in
-    Effects.from(userdata).continuation.yield(.titleChanged(string(terminal, GHOSTTY_TERMINAL_DATA_TITLE)))
+    Effects.from(userdata).listener?.yield(.titleChanged(string(terminal, GHOSTTY_TERMINAL_DATA_TITLE)))
 }
 
 private let pwdChanged: GhosttyTerminalPwdChangedFn = { terminal, userdata in
-    Effects.from(userdata).continuation.yield(.pwdChanged(string(terminal, GHOSTTY_TERMINAL_DATA_PWD)))
+    Effects.from(userdata).listener?.yield(.pwdChanged(string(terminal, GHOSTTY_TERMINAL_DATA_PWD)))
 }
 
 private let bell: GhosttyTerminalBellFn = { _, userdata in
-    Effects.from(userdata).continuation.yield(.bell)
+    Effects.from(userdata).listener?.yield(.bell)
 }
 
 private let programStatus: GhosttyTerminalProgramStatusFn = { _, userdata, report in
     // A sized struct: every field read here has been present since the
     // struct was introduced, so only a shorter struct is rejected.
     guard let report, report.pointee.size >= MemoryLayout<GhosttyTerminalProgramStatus>.size else { return }
-    Effects.from(userdata).continuation.yield(.programStatus(ProgramStatus(report.pointee)))
+    Effects.from(userdata).listener?.yield(.programStatus(ProgramStatus(report.pointee)))
 }
 
 private let clipboardWrite: GhosttyTerminalClipboardWriteFn = { _, userdata, write in
     guard let write else { return }
-    Effects.from(userdata).continuation.yield(.clipboardWrite(ClipboardWrite(write.pointee)))
+    Effects.from(userdata).listener?.yield(.clipboardWrite(ClipboardWrite(write.pointee)))
     // The reply must happen during the callback (ghostty terminal.h,
     // GhosttyClipboardWrite). Whether to perform the write is the view's
     // policy; the reply only reaches the program through write_pty, which a

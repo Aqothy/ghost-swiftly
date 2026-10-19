@@ -25,4 +25,29 @@ struct EffectTests {
         let write = ClipboardWrite(location: .standard, contents: [.init(mimeType: "text/plain", data: Data("hi".utf8))])
         #expect(events == [.titleChanged("first"), .clipboardWrite(write), .bell])
     }
+
+    /// Nobody performs a clipboard write or shows a title for a terminal no
+    /// view is listening to, so it keeps none of them.
+    @Test func eventsWithoutAListenerAreDropped() async throws {
+        let terminal = try Terminal(grid: GridSize(columns: 80, rows: 24))
+        await terminal.feed(Array("\u{1b}]2;unheard\u{07}\u{1b}]52;c;aGk=\u{07}".utf8))
+        let events = await terminal.events()
+        await terminal.feed(Array("\u{1b}]2;heard\u{07}".utf8))
+        var iterator = events.makeAsyncIterator()
+        #expect(await iterator.next() == .titleChanged("heard"))
+    }
+
+    /// A new view replaces the old one as the listener, and the old one's
+    /// stream ends rather than both waiting on one stream.
+    @Test func aNewListenerEndsThePreviousStream() async throws {
+        let terminal = try Terminal(grid: GridSize(columns: 80, rows: 24))
+        let first = await terminal.events()
+        let second = await terminal.events()
+        await terminal.feed(Array("\u{1b}]2;title\u{07}".utf8))
+        var firstEvents: [TerminalEvent] = []
+        for await event in first { firstEvents.append(event) }
+        #expect(firstEvents.isEmpty)
+        var iterator = second.makeAsyncIterator()
+        #expect(await iterator.next() == .titleChanged("title"))
+    }
 }

@@ -18,4 +18,14 @@ public protocol TerminalIO: AnyObject {
     /// The grid that fits the view at its font size changed. A host attaches
     /// at this grid; it is not a request to resize.
     func preferredGridChanged(_ grid: GridSize)
+
+    /// What the program asked of its terminal while the view showed it, in
+    /// order: title, working directory, bell and program status. The view
+    /// writes the clipboard itself (Ghostty's default `clipboard-write =
+    /// allow`).
+    func handle(_ event: TerminalEvent)
+}
+
+public extension TerminalIO {
+    func handle(_ event: TerminalEvent) {}
 }

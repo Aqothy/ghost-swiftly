@@ -5,7 +5,7 @@ import GhosttyVt
 /// I/O or rendering.
 ///
 /// The actor is the one owner of the terminal's state. Feed it program output
-/// in order; it reports what the program asked for through ``events``. It
+/// in order; it reports what the program asked for through ``events()``. It
 /// never answers the program: queries such as device attributes get no reply
 /// from here, so the host that owns the program must answer them.
 public actor Terminal {
@@ -18,9 +18,6 @@ public actor Terminal {
             self.scrollbackLimit = scrollbackLimit
         }
     }
-
-    /// Effects in the order the program produced them. One consumer.
-    public nonisolated let events: AsyncStream<TerminalEvent>
 
     var handle: OpaquePointer
     private let effects: Effects
@@ -93,10 +90,8 @@ public actor Terminal {
         var trackLastCell = true
         ghostty_mouse_encoder_setopt(mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_TRACK_LAST_CELL, &trackLastCell)
 
-        let (events, continuation) = AsyncStream.makeStream(of: TerminalEvent.self)
-        self.events = events
         self.handle = handle
-        self.effects = Effects(continuation: continuation)
+        self.effects = Effects()
         self.keyEncoder = keyEncoder
         self.keyEvent = keyEvent
         self.mouseEncoder = mouseEncoder
@@ -118,7 +113,19 @@ public actor Terminal {
         ghostty_key_event_free(keyEvent)
         ghostty_mouse_encoder_free(mouseEncoder)
         ghostty_mouse_event_free(mouseEvent)
-        effects.continuation.finish()
+        effects.listener?.finish()
+    }
+
+    // MARK: Events
+
+    /// What the program asks for from now on, in the order it asked. One
+    /// listener at a time: a new call ends the previous stream, and events
+    /// nobody listens to are dropped, since nobody would act on them.
+    public func events() -> AsyncStream<TerminalEvent> {
+        let (stream, listener) = AsyncStream.makeStream(of: TerminalEvent.self)
+        effects.listener?.finish()
+        effects.listener = listener
+        return stream
     }
 
     // MARK: Output

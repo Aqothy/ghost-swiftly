@@ -54,6 +54,8 @@ final class TerminalSurface {
     /// holds the size draws each step but asks the host once, at the end.
     private var sizeSettling = false
     private var inputs: AsyncStream<Input>.Continuation?
+    /// Receives what the program asks of the terminal while this view shows it.
+    private var events: Task<Void, Never>?
     private(set) var focused = false
     private var visible = true
     private var preedit: Preedit?
@@ -109,12 +111,26 @@ final class TerminalSurface {
         metalLayer.minificationFilter = .linear
         metalLayer.magnificationFilter = .linear
         startInput()
+        events = Task { [weak self, terminal] in
+            for await event in await terminal.events() {
+                self?.handle(event)
+            }
+        }
         Task { await terminal.setDefaultColors(Self.defaultColors(configuration.theme)) }
+    }
+
+    private func handle(_ event: TerminalEvent) {
+        if case .clipboardWrite(let write) = event {
+            write.perform()
+        } else {
+            io?.handle(event)
+        }
     }
 
     /// Call when the surface goes away.
     func close() {
         inputs?.finish()
+        events?.cancel()
         autoscroll?.cancel()
         if let renderer {
             Task {
