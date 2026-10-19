@@ -235,8 +235,8 @@ final class TerminalSurface {
                 // Keep the host in step while this view holds the size: the
                 // host draws the grid it last asked for.
                 if let grid = screen?.grid, grid == requestedGrid { io?.requestResize(preferred) }
-                // A host attaches at the grid the view reports, which holds
-                // the size just as asking does.
+                // A host may also grant the grid the view attaches with;
+                // drawing that grid shows this view holds the size.
                 requestedGrid = preferred
             }
             sizeLayer(layout, grid: screen?.grid ?? preferred)
