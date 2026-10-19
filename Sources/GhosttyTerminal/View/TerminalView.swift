@@ -27,3 +27,16 @@ extension TerminalView: NSViewRepresentable {
     }
 }
 #endif
+
+#if os(iOS)
+extension TerminalView: UIViewRepresentable {
+    public func makeUIView(context: Context) -> TerminalUIView {
+        TerminalUIView(terminal: terminal, io: io, configuration: configuration)
+    }
+
+    public func updateUIView(_ view: TerminalUIView, context: Context) {
+        view.io = io
+        view.configuration = configuration
+    }
+}
+#endif
