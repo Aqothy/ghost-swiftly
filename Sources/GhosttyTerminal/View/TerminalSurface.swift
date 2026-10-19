@@ -122,9 +122,12 @@ final class TerminalSurface {
             metrics = renderer.initialMetrics
             let colors = Self.rendererColors(configuration.theme)
             let state = renderer.renderState
+            let focused = focused
             Task {
                 await renderer.start()
                 await renderer.setColors(colors)
+                // Focus can arrive before the first layout starts the renderer.
+                if focused { await renderer.setFocused(true) }
                 await terminal.attach(state)
             }
         } catch {
