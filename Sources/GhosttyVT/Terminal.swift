@@ -51,10 +51,16 @@ public actor Terminal {
         var limit = configuration.scrollbackLimit
         ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &limit)
         // Ghostty.app's defaults (termio/Termio.zig init): grapheme-width-method
-        // unicode and cursor-style-blink unset. A snapshot carries its own.
-        for mode in [Mode.graphemeCluster, .cursorBlinking] {
-            var config = GhosttyTerminalModeConfig(mode: mode.ghostty, value: true)
-            ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &config)
+        // unicode and cursor-style-blink unset. Cursor blink is a reset default
+        // of its own, not a mode default. A snapshot carries its own.
+        var grapheme = GhosttyTerminalModeConfig(mode: Mode.graphemeCluster.ghostty, value: true)
+        var blink = true
+        do throws(GhosttyError) {
+            try check(ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &grapheme))
+            try check(ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_BLINK, &blink))
+        } catch {
+            ghostty_terminal_free(handle)
+            throw error
         }
 
         var keyEncoder: OpaquePointer?

@@ -63,6 +63,8 @@ struct RenderStateTests {
         #expect(row.cells[0].content == .grapheme(0x2764, [0xFE0F]))
         #expect(row.cells[0].wide == .wide)
         #expect(row.cells[2].codepoint == 0x78)
+        // And the cursor blinks, as in Ghostty.app.
+        #expect(update.cursor.blinking)
     }
 
     @Test func aRenderHoldKeepsTheFrameFromWhenItBegan() async throws {
