@@ -46,8 +46,8 @@ final class TerminalSurface {
     private var viewSize = CGSize.zero
     /// The screen as the renderer last drew it.
     private(set) var screen: DrawnScreen?
-    /// The grid this view last asked for; holding it means the view sized
-    /// the terminal.
+    /// The grid this view last asked for or reported; the host drawing it
+    /// means this view sizes the terminal.
     private var requestedGrid: GridSize?
     private var reportedPreferredGrid: GridSize?
     /// While the view's size is animating (the iOS keyboard), a view that
@@ -231,10 +231,13 @@ final class TerminalSurface {
             sizeLayer(layout, grid: preferred)
         case .host:
             let preferred = layout.preferredGrid
-            // Keep the host in sync while this view holds the size.
-            if !sizeSettling, let grid = screen?.grid, grid == requestedGrid, preferred != grid {
+            if !sizeSettling, preferred != requestedGrid {
+                // Keep the host in step while this view holds the size: the
+                // host draws the grid it last asked for.
+                if let grid = screen?.grid, grid == requestedGrid { io?.requestResize(preferred) }
+                // A host attaches at the grid the view reports, which holds
+                // the size just as asking does.
                 requestedGrid = preferred
-                io?.requestResize(preferred)
             }
             sizeLayer(layout, grid: screen?.grid ?? preferred)
         }
