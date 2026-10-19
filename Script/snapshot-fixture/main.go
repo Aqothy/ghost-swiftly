@@ -3,10 +3,10 @@
 // Ghostty commit, with the encoder side's own formatter output and cursor as
 // the expected values.
 //
-// Run from the repository root with libghostty-vt built from source at the
-// same commit, as maiD's `make ghostty-vt` builds it for the daemon:
+// Run from the repository root with the libghostty-vt maiD's `make
+// ghostty-vt` sets up for the daemon (the same commit's Ghostty build):
 //
-//	PKG_CONFIG_PATH=<maiD>/build/ghostty-vt/_deps/ghostty-src/zig-out/share/pkgconfig \
+//	PKG_CONFIG_PATH=<maiD>/build/ghostty-vt/pkgconfig \
 //	    go -C Script/snapshot-fixture run . ../../Tests/GhosttyVTTests/Fixtures
 package main
 
@@ -56,14 +56,6 @@ func main() {
 	}
 	out := os.Args[1]
 
-	info, err := libghostty.GetBuildInfo()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if info.VersionBuild == "" {
-		log.Fatal("libghostty-vt was built without its commit in -Dlib-version-string")
-	}
-
 	term, err := libghostty.NewTerminal(
 		libghostty.WithSize(columns, rows),
 		libghostty.WithMaxScrollbackBytes(scrollbackBytes),
@@ -103,7 +95,7 @@ func main() {
 	}
 
 	want := expected{
-		Commit:          info.VersionBuild,
+		Commit:          pinnedCommit(),
 		Columns:         columns,
 		Rows:            rows,
 		ScrollbackBytes: scrollbackBytes,
@@ -157,4 +149,20 @@ func plain(term *libghostty.Terminal) (string, error) {
 	}
 	defer formatter.Close()
 	return formatter.FormatString()
+}
+
+// pinnedCommit is Package.swift's Ghostty commit, whose build maiD's daemon
+// links too. Ghostty's build doesn't stamp its commit into the library.
+func pinnedCommit() string {
+	data, err := os.ReadFile("../../Package.swift")
+	if err != nil {
+		log.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		if rest, ok := strings.CutPrefix(line, `let ghosttyCommit = "`); ok {
+			return strings.TrimSuffix(rest, `"`)
+		}
+	}
+	log.Fatal("Package.swift has no ghosttyCommit")
+	return ""
 }

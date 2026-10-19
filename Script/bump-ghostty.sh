@@ -4,8 +4,8 @@
 # against Ghostty's key (PACKAGING.md), then sets the commit and checksum in
 # Package.swift and BuildInfo.swift. Ghostty publishes the signature only on
 # its rolling "tip" release, so <commit> must be the current tip. Needs
-# minisign. Bump maiD's daemon to the same commit and regenerate the fixture
-# (Script/snapshot-fixture) with it.
+# minisign. Then pin maiD's daemon to the same commit and checksum (its
+# Makefile says where) and regenerate the fixture (Script/snapshot-fixture).
 #
 # Usage: Script/bump-ghostty.sh <full commit>
 set -eu
