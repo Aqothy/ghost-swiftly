@@ -24,8 +24,8 @@ import (
 const (
 	columns = 80
 	rows    = 24
-	// maiD's attach model keeps 2 MiB of scrollback.
-	scrollbackBytes = 2 << 20
+	// maiD's run terminal keeps 10 MB of scrollback.
+	scrollbackBytes = 10_000_000
 	historyLines    = 3000
 )
 

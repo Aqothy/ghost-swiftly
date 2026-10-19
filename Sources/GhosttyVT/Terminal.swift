@@ -11,7 +11,7 @@ import GhosttyVt
 public actor Terminal {
     public struct Configuration: Sendable, Hashable {
         /// The most scrollback to keep, in bytes of terminal pages (Ghostty's
-        /// `scrollback-limit`). A restored snapshot brings its own limit.
+        /// `scrollback-limit-bytes`). A restored snapshot brings its own limit.
         public var scrollbackLimit: Int
 
         public init(scrollbackLimit: Int = 10_000_000) {
