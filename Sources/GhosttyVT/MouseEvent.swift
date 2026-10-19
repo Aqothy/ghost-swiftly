@@ -20,6 +20,12 @@ public struct MouseEvent: Sendable, Hashable {
         case six
         /// Wheel right.
         case seven
+        /// Back.
+        case eight
+        /// Forward.
+        case nine
+        case ten
+        case eleven
 
         var ghostty: GhosttyMouseButton {
             switch self {
@@ -30,6 +36,10 @@ public struct MouseEvent: Sendable, Hashable {
             case .five: GHOSTTY_MOUSE_BUTTON_FIVE
             case .six: GHOSTTY_MOUSE_BUTTON_SIX
             case .seven: GHOSTTY_MOUSE_BUTTON_SEVEN
+            case .eight: GHOSTTY_MOUSE_BUTTON_EIGHT
+            case .nine: GHOSTTY_MOUSE_BUTTON_NINE
+            case .ten: GHOSTTY_MOUSE_BUTTON_TEN
+            case .eleven: GHOSTTY_MOUSE_BUTTON_ELEVEN
             }
         }
     }

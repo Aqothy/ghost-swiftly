@@ -26,6 +26,9 @@ actor Renderer {
     private var displayLinkDelegate: DisplayLinkDelegate?
     private var padding = ScreenGeometry.Padding()
     private var focused = false
+    /// Off screen nothing draws: the link stays paused until shown again.
+    private var visible = true
+    private var preedit: Preedit?
     private var blinkVisible = true
     private var blinkTimer: Timer?
     /// The cells changed since the last frame that drew.
@@ -40,9 +43,9 @@ actor Renderer {
     /// Ghostty's cursor blink interval, in seconds.
     private static let blinkInterval: TimeInterval = 0.6
 
-    /// The terminal's grid when it changes, for layout.
-    private let onGridChange: @Sendable (GridSize) -> Void
-    private var lastGrid: GridSize?
+    /// What the view lays out and places the IME by, when it changes.
+    private let onScreenChange: @Sendable (DrawnScreen) -> Void
+    private var lastScreen: DrawnScreen?
 
     /// The fonts to draw with.
     struct FontRequest: Sendable, Equatable {
@@ -53,7 +56,7 @@ actor Renderer {
     /// The first font's metrics, for the view's first layout.
     nonisolated let initialMetrics: Metrics
 
-    init(layer: SharedLayer, font: FontRequest, onGridChange: @escaping @Sendable (GridSize) -> Void) throws {
+    init(layer: SharedLayer, font: FontRequest, onScreenChange: @escaping @Sendable (DrawnScreen) -> Void) throws {
         let thread = RenderThread(name: "ghostty.renderer")
         self.thread = thread
         self.layer = layer.layer
@@ -61,7 +64,7 @@ actor Renderer {
         let grid = FontGrid.make(family: font.family, size: font.size)
         initialMetrics = grid.metrics
         builder = CellBuilder(grid: grid)
-        self.onGridChange = onGridChange
+        self.onScreenChange = onScreenChange
         let wake = WakeTarget()
         renderState = try RenderState { wake.wake() }
         wake.renderer = self
@@ -105,8 +108,19 @@ actor Renderer {
 
     private func wake() {
         wakeQueued.store(false, ordering: .releasing)
+        guard visible else { return }
         idleTicks = 0
         displayLink?.isPaused = false
+    }
+
+    func setVisible(_ visible: Bool) {
+        self.visible = visible
+        if visible {
+            needsDraw = true
+            wake()
+        } else {
+            displayLink?.isPaused = true
+        }
     }
 
     // MARK: Inputs from the view
@@ -126,6 +140,13 @@ actor Renderer {
         wake()
     }
 
+    func setPreedit(_ preedit: Preedit?) {
+        self.preedit = preedit
+        builder.setPreedit(preedit, focused: focused, blinkVisible: blinkVisible)
+        needsDraw = true
+        wake()
+    }
+
     func setColors(_ colors: RendererColors) {
         builder.rendererColors = colors
         renderState.redrawAll()
@@ -139,6 +160,7 @@ actor Renderer {
         let colors = builder.rendererColors
         builder = CellBuilder(grid: grid)
         builder.rendererColors = colors
+        builder.setPreedit(preedit, focused: focused, blinkVisible: blinkVisible)
         renderState.redrawAll()
         wake()
         return grid.metrics
@@ -152,9 +174,12 @@ actor Renderer {
                 builder.apply(update, focused: focused, blinkVisible: blinkVisible)
             }
             needsDraw = true
-            if update.grid != lastGrid {
-                lastGrid = update.grid
-                onGridChange(update.grid)
+            let screen = DrawnScreen(
+                grid: update.grid,
+                cursor: update.cursor.viewport.map { DrawnScreen.Cell(x: $0.x, y: $0.y) })
+            if screen != lastScreen {
+                lastScreen = screen
+                onScreenChange(screen)
             }
         }
         let size = CGSize(width: drawable.texture.width, height: drawable.texture.height)
@@ -194,6 +219,18 @@ actor Renderer {
         needsDraw = true
         wake()
     }
+}
+
+/// The screen as last drawn, for the view's layout and IME placement.
+struct DrawnScreen: Equatable, Sendable {
+    struct Cell: Equatable, Sendable {
+        var x: Int
+        var y: Int
+    }
+
+    var grid: GridSize
+    /// The cursor's viewport cell; nil when scrolled out of view.
+    var cursor: Cell?
 }
 
 /// Frame timing for Instruments: Build (cells from an update) and Encode

@@ -489,7 +489,9 @@ extension Terminal {
 extension MouseEvent.Button {
     /// The order Ghostty picks the button a motion report carries: the
     /// first held, in its button enum's order.
-    static let reportOrder: [MouseEvent.Button] = [.left, .right, .middle, .four, .five, .six, .seven]
+    static let reportOrder: [MouseEvent.Button] = [
+        .left, .right, .middle, .four, .five, .six, .seven, .eight, .nine, .ten, .eleven,
+    ]
 }
 
 private extension Duration {

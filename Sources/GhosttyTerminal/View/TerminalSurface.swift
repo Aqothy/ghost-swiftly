@@ -16,7 +16,7 @@ struct SurfaceLayout: Equatable {
     /// The largest grid that fits the view.
     var preferredGrid: GridSize {
         GridSize(columns: UInt16(clamping: max(1, (viewWidth - 2 * padding) / max(1, cellWidth))),
-             rows: UInt16(clamping: max(1, (viewHeight - 2 * padding) / max(1, cellHeight))))
+                 rows: UInt16(clamping: max(1, (viewHeight - 2 * padding) / max(1, cellHeight))))
     }
 
     /// The drawable for a grid: the view, grown to fit a grid that doesn't.
@@ -44,18 +44,45 @@ final class TerminalSurface {
     private(set) var metrics: Metrics?
     private var scale = 1.0
     private var viewSize = CGSize.zero
-    /// The terminal's grid, as the renderer last saw it.
-    private(set) var grid: GridSize?
+    /// The screen as the renderer last drew it.
+    private(set) var screen: DrawnScreen?
     /// The grid this view last asked for; holding it means the view sized
     /// the terminal.
     private var requestedGrid: GridSize?
     private var inputs: AsyncStream<Input>.Continuation?
-    private var focused = false
+    private(set) var focused = false
+    private var visible = true
+    private var preedit: Preedit?
+    private var autoscroll: Task<Void, Never>?
+    /// Asks the user whether to paste text that could run commands they
+    /// didn't see; the platform view shows the prompt.
+    var confirmUnsafePaste: (@MainActor (String) async -> Bool)?
+    /// The system's double-click time.
+    var clickInterval: Duration = .milliseconds(500)
 
+    /// User input, applied in order.
     enum Input {
+        /// A key from the keyboard.
         case key(KeyEvent)
+        /// Text committed by an input method, dictation or the software
+        /// keyboard: typed, never pasted.
         case text(String)
+        case paste(String)
+        /// A button at a point in the view. `local` runs when the terminal
+        /// handled it itself rather than reporting it (a right click's menu).
+        case mouseButton(MouseButtonAction, MouseEvent.Button, Modifiers, CGPoint, local: (@MainActor () -> Void)?)
+        /// The pointer moved to a point in the view, or left it (nil).
+        case mouseMoved(Modifiers, CGPoint?)
+        /// Positive `y` scrolls up; precise deltas are points, others wheel
+        /// ticks.
+        case scroll(x: Double, y: Double, precise: Bool)
+        /// A force click or long press: selects the word under the press.
+        case deepPress
         case focus(Bool)
+        /// Hands the selected text, as Ghostty copies it, to `copy`; after
+        /// the input before it, so a quick drag and copy gets the drag.
+        case copy(@MainActor (String) -> Void)
+        case selectAll
     }
 
     init(terminal: Terminal, io: TerminalIO?, configuration: TerminalConfiguration) {
@@ -79,6 +106,7 @@ final class TerminalSurface {
     /// Call when the surface goes away.
     func close() {
         inputs?.finish()
+        autoscroll?.cancel()
         if let renderer {
             Task {
                 await terminal.detach(renderer.renderState)
@@ -115,19 +143,22 @@ final class TerminalSurface {
 
     private func startRenderer(_ font: Renderer.FontRequest) {
         do {
-            let renderer = try Renderer(layer: SharedLayer(metalLayer), font: font) { [weak self] grid in
-                Task { @MainActor in self?.gridChanged(grid) }
+            let renderer = try Renderer(layer: SharedLayer(metalLayer), font: font) { [weak self] screen in
+                Task { @MainActor in self?.screenChanged(screen) }
             }
             self.renderer = renderer
             metrics = renderer.initialMetrics
             let colors = Self.rendererColors(configuration.theme)
             let state = renderer.renderState
             let focused = focused
+            let visible = visible
             Task {
                 await renderer.start()
                 await renderer.setColors(colors)
-                // Focus can arrive before the first layout starts the renderer.
+                // Focus and visibility can change before the first layout
+                // starts the renderer.
                 if focused { await renderer.setFocused(true) }
+                if !visible { await renderer.setVisible(false) }
                 await terminal.attach(state)
             }
         } catch {
@@ -146,6 +177,9 @@ final class TerminalSurface {
     }
 
     var preferredGrid: GridSize? { currentLayout?.preferredGrid }
+
+    /// The grid being drawn: the terminal's once the renderer has seen it.
+    private var drawnGrid: GridSize? { screen?.grid ?? currentLayout?.preferredGrid }
 
     private func applyLayout() {
         guard let layout = currentLayout, layout.viewWidth > 0, layout.viewHeight > 0 else { return }
@@ -168,11 +202,11 @@ final class TerminalSurface {
         case .host:
             let preferred = layout.preferredGrid
             // Keep the host in sync while this view holds the size.
-            if let grid, grid == requestedGrid, preferred != grid {
+            if let grid = screen?.grid, grid == requestedGrid, preferred != grid {
                 requestedGrid = preferred
                 io?.requestResize(preferred)
             }
-            sizeLayer(layout, grid: grid ?? preferred)
+            sizeLayer(layout, grid: screen?.grid ?? preferred)
         }
     }
 
@@ -193,9 +227,47 @@ final class TerminalSurface {
         CATransaction.commit()
     }
 
-    private func gridChanged(_ grid: GridSize) {
-        self.grid = grid
-        if case .host = configuration.gridPolicy { applyLayout() }
+    private func screenChanged(_ screen: DrawnScreen) {
+        let gridChanged = screen.grid != self.screen?.grid
+        self.screen = screen
+        if gridChanged, case .host = configuration.gridPolicy { applyLayout() }
+    }
+
+    /// Drawable pixels per view point, including a host grid's scaling.
+    private var pixelsPerPoint: Double {
+        guard let layout = currentLayout, let grid = drawnGrid else { return scale }
+        return scale / layout.fitScale(for: grid)
+    }
+
+    /// A point in the view as surface pixels, which the mouse encoder and
+    /// selection read.
+    private func surfacePosition(_ point: CGPoint) -> (x: Double, y: Double) {
+        let origin = metalLayer.frame.origin
+        return ((point.x - origin.x) * pixelsPerPoint, (point.y - origin.y) * pixelsPerPoint)
+    }
+
+    private var mouseGeometry: MouseGeometry? {
+        guard let layout = currentLayout, let grid = drawnGrid else { return nil }
+        let drawable = layout.drawableSize(for: grid)
+        let padding = UInt32(layout.padding)
+        return MouseGeometry(
+            screenWidth: UInt32(drawable.width), screenHeight: UInt32(drawable.height),
+            cellWidth: UInt32(layout.cellWidth), cellHeight: UInt32(layout.cellHeight),
+            paddingTop: padding, paddingBottom: padding, paddingLeft: padding, paddingRight: padding)
+    }
+
+    /// Where an input method anchors its candidates: the cursor cell in view
+    /// points, as wide as the preedit (Ghostty's `imePoint`).
+    var cursorRect: CGRect? {
+        guard let layout = currentLayout, let cell = screen?.cursor else { return nil }
+        let perPoint = pixelsPerPoint
+        let origin = metalLayer.frame.origin
+        let columns = preedit?.codepoints.reduce(0) { $0 + ($1.wide ? 2 : 1) } ?? 0
+        return CGRect(
+            x: origin.x + Double(cell.x * layout.cellWidth + layout.padding) / perPoint,
+            y: origin.y + Double(cell.y * layout.cellHeight + layout.padding) / perPoint,
+            width: Double(columns * layout.cellWidth) / perPoint,
+            height: Double(layout.cellHeight) / perPoint)
     }
 
     // MARK: Input
@@ -204,40 +276,114 @@ final class TerminalSurface {
         inputs?.yield(input)
     }
 
-    /// One task encodes inputs in order, so bytes reach the I/O in the order
+    /// One task applies inputs in order, so bytes reach the I/O in the order
     /// the user produced them, after any resize they claim.
     private func startInput() {
         let (stream, continuation) = AsyncStream.makeStream(of: Input.self)
         inputs = continuation
-        let terminal = terminal
         Task { [weak self] in
             for await input in stream {
                 guard let self else { return }
-                switch input {
-                case .key(let event):
-                    let bytes = await terminal.encode(event, optionAsAlt: configuration.optionAsAlt)
-                    guard !bytes.isEmpty else { continue }
-                    claimSizeBeforeTyping()
-                    io?.send(bytes)
-                case .text(let text):
-                    let bytes = Array(text.utf8)
-                    guard !bytes.isEmpty else { continue }
-                    claimSizeBeforeTyping()
-                    io?.send(bytes)
-                case .focus(let focused):
-                    let bytes = await terminal.encodeFocus(focused)
-                    if !bytes.isEmpty { io?.send(bytes) }
-                }
+                await apply(input)
             }
         }
+    }
+
+    private func apply(_ input: Input) async {
+        switch input {
+        case .key(let event):
+            typed(await terminal.type(event, optionAsAlt: optionAsAlt))
+        case .text(let text):
+            typed(await terminal.type(KeyEvent(key: .unidentified, text: text), optionAsAlt: optionAsAlt))
+        case .paste(let text):
+            var bytes = await terminal.encodePaste(text)
+            if bytes == nil, await confirmUnsafePaste?(text) == true {
+                bytes = await terminal.encodePaste(text, allowUnsafe: true)
+            }
+            if let bytes { typed(bytes) }
+        case .mouseButton(let action, let button, let modifiers, let point, let local):
+            guard let geometry = mouseGeometry else { return }
+            let position = surfacePosition(point)
+            let outcome = await terminal.mouseButton(
+                action, button, modifiers: modifiers, x: position.x, y: position.y,
+                geometry: geometry, clickInterval: clickInterval)
+            switch outcome {
+            case .reported(let bytes): if !bytes.isEmpty { io?.send(bytes) }
+            case .local: local?()
+            }
+            if action == .release, button == .left { autoscroll?.cancel() }
+        case .mouseMoved(let modifiers, let point):
+            guard let geometry = mouseGeometry else { return }
+            let position = point.map(surfacePosition) ?? (x: -1, y: -1)
+            let bytes = await terminal.mouseMoved(modifiers: modifiers, x: position.x, y: position.y, geometry: geometry)
+            if !bytes.isEmpty { io?.send(bytes) }
+            if await terminal.selectionAutoscrolls { startAutoscroll() }
+        case .scroll(let x, let y, let precise):
+            guard let geometry = mouseGeometry else { return }
+            // Precise deltas are points; the terminal wants pixels.
+            let factor = precise ? pixelsPerPoint : 1
+            let bytes = await terminal.scroll(x: x * factor, y: y * factor, precise: precise, geometry: geometry)
+            if !bytes.isEmpty { io?.send(bytes) }
+        case .deepPress:
+            await terminal.deepPress()
+        case .focus(let focused):
+            let bytes = await terminal.encodeFocus(focused)
+            if !bytes.isEmpty { io?.send(bytes) }
+        case .copy(let copy):
+            if let text = await terminal.selectionText(), !text.isEmpty { copy(text) }
+        case .selectAll:
+            await terminal.selectAll()
+        }
+    }
+
+    /// Sends typed bytes; typing takes the size first.
+    private func typed(_ bytes: [UInt8]) {
+        guard !bytes.isEmpty else { return }
+        claimSizeBeforeTyping()
+        io?.send(bytes)
     }
 
     /// Typing takes the size: a view drawing another view's grid asks for
     /// its own before the keystroke reaches the program.
     private func claimSizeBeforeTyping() {
-        guard case .host = configuration.gridPolicy, let preferred = preferredGrid, grid != preferred else { return }
+        guard case .host = configuration.gridPolicy, let preferred = preferredGrid, screen?.grid != preferred
+        else { return }
         requestedGrid = preferred
         io?.requestResize(preferred)
+    }
+
+    /// Scrolls while a selection drag is past the top or bottom, every 15 ms
+    /// (Ghostty's `selection_scroll_ms`).
+    private func startAutoscroll() {
+        guard autoscroll == nil else { return }
+        autoscroll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(15))
+                guard let self, let geometry = mouseGeometry, await terminal.selectionAutoscrolls else { break }
+                await terminal.selectionAutoscrollTick(geometry: geometry)
+            }
+            self?.autoscroll = nil
+        }
+    }
+
+    private var optionAsAlt: OptionAsAlt {
+        configuration.optionAsAlt ?? KeyboardLayout.optionAsAlt
+    }
+
+    /// Shows the input method's uncommitted text at the cursor; nil or empty
+    /// removes it.
+    func setPreedit(_ text: String?) {
+        let codepoints = (text ?? "").unicodeScalars.compactMap { scalar -> Preedit.Codepoint? in
+            // Zero-width preedit can't be drawn (Ghostty skips it too).
+            let width = scalar.terminalWidth
+            return width > 0 ? Preedit.Codepoint(codepoint: scalar.value, wide: width >= 2) : nil
+        }
+        let preedit = codepoints.isEmpty ? nil : Preedit(codepoints: codepoints)
+        guard preedit != self.preedit else { return }
+        // Composing clears the selection, as typing does.
+        Task { await terminal.clearSelection() }
+        self.preedit = preedit
+        if let renderer { Task { await renderer.setPreedit(preedit) } }
     }
 
     func setFocused(_ focused: Bool) {
@@ -245,6 +391,14 @@ final class TerminalSurface {
         self.focused = focused
         if let renderer { Task { await renderer.setFocused(focused) } }
         send(.focus(focused))
+    }
+
+    /// Off screen (occluded, or the app in the background): stop drawing,
+    /// which iOS also requires of background apps.
+    func setVisible(_ visible: Bool) {
+        guard visible != self.visible else { return }
+        self.visible = visible
+        if let renderer { Task { await renderer.setVisible(visible) } }
     }
 
     // MARK: Configuration

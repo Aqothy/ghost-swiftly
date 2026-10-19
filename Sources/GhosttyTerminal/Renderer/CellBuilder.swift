@@ -1,6 +1,7 @@
 // Ported from ghostty src/renderer/generic.zig @ 81598385d608dda4946093d6d6a234d204a2f225
 // Ported from ghostty src/renderer/cursor.zig @ 81598385d608dda4946093d6d6a234d204a2f225
 // Ported from ghostty src/terminal/style.zig @ 81598385d608dda4946093d6d6a234d204a2f225
+// Ported from ghostty src/renderer/State.zig @ 81598385d608dda4946093d6d6a234d204a2f225
 // Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors. MIT License.
 //
 // rebuildCells, rebuildRow, addGlyph, addUnderline/Overline/Strikethrough
@@ -23,6 +24,37 @@ struct RendererColors: Equatable, Sendable {
     var selectionForeground: RGB?
 }
 
+/// IME composition text, drawn at the cursor until committed (Ghostty's
+/// `renderer.State.Preedit`).
+struct Preedit: Equatable, Sendable {
+    struct Codepoint: Equatable, Sendable {
+        var codepoint: UInt32
+        var wide: Bool
+    }
+
+    var codepoints: [Codepoint]
+
+    /// The columns the preedit covers starting at `start`, shifted left to
+    /// end by `max`, and the first codepoint that fits when it's wider than
+    /// that.
+    func range(start: Int, max: Int) -> (start: Int, end: Int, codepointOffset: Int) {
+        // Measure from the end so the latest input stays visible.
+        let maxWidth = max - start + 1
+        var width = 0
+        var offset = 0
+        for index in codepoints.indices.reversed() {
+            width += codepoints[index].wide ? 2 : 1
+            if width > maxWidth {
+                offset = index
+                break
+            }
+        }
+        let end = width > 0 ? start + width - 1 : start
+        let shift = end > max ? end - max : 0
+        return (Swift.max(0, start - shift), Swift.max(0, end - shift), offset)
+    }
+}
+
 /// Turns render updates into GPU cells, rebuilding only what changed.
 final class CellBuilder {
     private(set) var contents = CellContents()
@@ -35,6 +67,10 @@ final class CellBuilder {
     /// The viewport's rows as of the last update. A row that isn't dirty is
     /// unchanged since the update that carried it.
     private var rows: [[RenderCell]] = []
+    private var selections: [ClosedRange<Int>?] = []
+    private var preedit: Preedit?
+    /// The row the preedit was last drawn on.
+    private var preeditRow: Int?
     private var cursor: RenderCursor?
     var cursorBlinks: Bool { cursor?.blinking ?? false }
     private var colors: RenderColors?
@@ -55,6 +91,8 @@ final class CellBuilder {
         if resized {
             contents.resize(columns: columns, rows: rowCount)
             rows = [[RenderCell]](repeating: [], count: rowCount)
+            selections = [ClosedRange<Int>?](repeating: nil, count: rowCount)
+            preeditRow = nil
             uniforms.gridSize = SIMD2(UInt16(columns), UInt16(rowCount))
         }
         if update.dirty == .full || resized { contents.reset() }
@@ -63,19 +101,63 @@ final class CellBuilder {
         colors = update.colors
         for row in update.rows where row.y < rowCount {
             rows[row.y] = row.cells
+            selections[row.y] = row.selection
             contents.clear(row: row.y)
             rebuildRow(row.y, row.cells, selection: row.selection, update.colors, update.cursor)
         }
+        if preedit != nil || preeditRow != nil { rebuildPreeditRows() }
         rebuildCursor(focused: focused, blinkVisible: blinkVisible)
 
         let background = update.colors.background
         uniforms.bgColor = SIMD4(background.r, background.g, background.b, 255)
     }
 
+    /// Shows, changes or (with nil) removes the IME preedit.
+    func setPreedit(_ preedit: Preedit?, focused: Bool, blinkVisible: Bool) {
+        guard preedit != self.preedit else { return }
+        self.preedit = preedit
+        rebuildPreeditRows()
+        rebuildCursor(focused: focused, blinkVisible: blinkVisible)
+    }
+
+    /// Rebuilds the row the preedit was on and the one it's on now, with the
+    /// preedit drawn over the cells it covers.
+    private func rebuildPreeditRows() {
+        guard let colors, let cursor else { return }
+        let target = preedit == nil ? nil : cursor.viewport.map(\.y)
+        for y in Set([preeditRow, target].compactMap { $0 }) where y < rows.count {
+            contents.clear(row: y)
+            let range = y == target ? preedit?.range(start: cursor.viewport!.x, max: contents.columns - 1) : nil
+            rebuildRow(y, rows[y], selection: selections[y], colors, cursor,
+                       skip: range.map { $0.start...$0.end })
+            if let preedit, let range {
+                var x = range.start
+                for codepoint in preedit.codepoints[range.codepointOffset...] {
+                    addPreeditCell(codepoint, x, y, colors.foreground)
+                    x += codepoint.wide ? 2 : 1
+                }
+            }
+        }
+        preeditRow = target
+    }
+
+    private func addPreeditCell(_ codepoint: Preedit.Codepoint, _ x: Int, _ y: Int, _ color: RGB) {
+        guard x < contents.columns else { return }
+        let options = Glyph.RenderOptions(gridMetrics: grid.metrics, cellWidth: 1)
+        if let render = grid.renderCodepoint(codepoint.codepoint, style: .regular, presentation: .text, options: options) {
+            contents.add(CellText(atlas: .grayscale, gridPos: SIMD2(UInt16(x), UInt16(y)),
+                                  color: SIMD4(color.r, color.g, color.b, 255), glyph: render.glyph))
+        }
+        addDecoration(.underline, x, y, color, 255)
+        if codepoint.wide, x < contents.columns - 1 { addDecoration(.underline, x + 1, y, color, 255) }
+    }
+
     /// Redraws only the cursor, for focus and blink changes.
     func rebuildCursor(focused: Bool, blinkVisible: Bool) {
         contents.setCursor(nil, .beforeText)
         uniforms.cursorPos = SIMD2(.max, .max)
+        // The preedit stands in for the cursor.
+        guard preedit == nil else { return }
         guard let cursor, let colors, let viewport = cursor.viewport, viewport.y < rows.count else { return }
         let cells = rows[viewport.y]
         let cell = viewport.x < cells.count ? cells[viewport.x] : nil
@@ -105,7 +187,8 @@ final class CellBuilder {
         case lock
     }
 
-    /// Ghostty's `renderer.cursorStyle`, in priority order. No preedit yet.
+    /// Ghostty's `renderer.cursorStyle`, in priority order. A preedit hides
+    /// the cursor before this is asked (generic.zig rebuildCells).
     static func cursorStyle(_ cursor: RenderCursor, focused: Bool, blinkVisible: Bool) -> CursorStyle? {
         guard cursor.viewport != nil else { return nil }
         if cursor.passwordInput { return .lock }
@@ -152,7 +235,7 @@ final class CellBuilder {
 
     // swiftlint:disable:next function_body_length cyclomatic_complexity
     private func rebuildRow(_ y: Int, _ cells: [RenderCell], selection: ClosedRange<Int>?, _ colors: RenderColors,
-                            _ cursor: RenderCursor) {
+                            _ cursor: RenderCursor, skip: ClosedRange<Int>? = nil) {
         let columns = min(cells.count, contents.columns)
         let cursorX = cursor.viewport?.y == y ? cursor.viewport?.x : nil
         var runs = RunIterator(grid: grid, shaper: shaper, cells: cells, selection: selection, cursorX: cursorX)
@@ -161,6 +244,18 @@ final class CellBuilder {
         var shapedIndex = 0
 
         for x in 0..<columns {
+            // A preedit draws over these columns.
+            if let skip {
+                if skip.contains(x) { continue }
+                // Catch the runs up past the skipped cells.
+                if x == skip.upperBound + 1 {
+                    while let current = run, current.offset + current.cells <= x {
+                        run = runs.next()
+                        shaped = nil
+                        shapedIndex = 0
+                    }
+                }
+            }
             let cell = cells[x]
             let style = cell.hasStyling ? cell.style : .default
 
@@ -225,6 +320,10 @@ final class CellBuilder {
                 }
                 // Glyphs land in at most one run, at increasing x.
                 if let shapedCells = shaped {
+                    // Glyphs of skipped cells.
+                    while shapedIndex < shapedCells.count, current.offset + Int(shapedCells[shapedIndex].x) < x {
+                        shapedIndex += 1
+                    }
                     while shapedIndex < shapedCells.count, current.offset + Int(shapedCells[shapedIndex].x) == x {
                         addGlyph(x, y, cells, shapedCells[shapedIndex], current, fg, alpha)
                         shapedIndex += 1

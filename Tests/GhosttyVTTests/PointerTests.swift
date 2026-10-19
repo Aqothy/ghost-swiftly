@@ -39,6 +39,10 @@ struct PointerTests {
         }
         #expect(await terminal.selectionText() == "world")
 
+        _ = await terminal.mouseButton(.press, .left, modifiers: [], x: point.x, y: point.y,
+                                       geometry: geometry, clickInterval: interval)
+        #expect(await terminal.selectionText() == "hello world")
+
         // Typing clears it.
         _ = await terminal.type(KeyEvent(key: .a, text: "a"), optionAsAlt: .none)
         #expect(await terminal.selectionText() == nil)

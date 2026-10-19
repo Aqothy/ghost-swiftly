@@ -5,8 +5,10 @@ public struct TerminalConfiguration: Sendable, Equatable {
     public var font = Font()
     public var theme = Theme()
     public var gridPolicy = GridPolicy.fitView
-    /// How the Option key types (Ghostty's `macos-option-as-alt`).
-    public var optionAsAlt = OptionAsAlt.none
+    /// How the Option key types (Ghostty's `macos-option-as-alt`). Nil
+    /// decides from the keyboard layout as Ghostty does: Alt on the US
+    /// layouts, where Option's characters are rarely wanted.
+    public var optionAsAlt: OptionAsAlt?
     /// Space around the grid, in points (Ghostty's `window-padding-x/y`).
     public var padding = 2.0
 
