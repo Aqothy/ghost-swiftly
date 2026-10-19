@@ -1,5 +1,19 @@
 // swift-tools-version: 6.2
+import Foundation
 import PackageDescription
+
+// libghostty-vt as published with this release; Script/release.sh sets both.
+let releaseURL = "https://github.com/Aqothy/ghost-swiftly/releases/download/unreleased/ghostty-vt.xcframework.zip"
+let releaseChecksum = "unreleased"
+
+// Script/build-xcframework.sh builds it into Frameworks/ from upstream Ghostty
+// at Script/ghostty-commit. A checkout without that build, as when another
+// package depends on this one, downloads the release's.
+let localXCFramework = "Frameworks/ghostty-vt.xcframework"
+let libghosttyVT: Target =
+    FileManager.default.fileExists(atPath: "\(Context.packageDirectory)/\(localXCFramework)")
+    ? .binaryTarget(name: "CGhosttyVT", path: localXCFramework)
+    : .binaryTarget(name: "CGhosttyVT", url: releaseURL, checksum: releaseChecksum)
 
 let package = Package(
     name: "ghost-swiftly",
@@ -9,9 +23,7 @@ let package = Package(
         .library(name: "GhosttyTerminal", targets: ["GhosttyTerminal"]),
     ],
     targets: [
-        // Built by Script/build-xcframework.sh from upstream Ghostty at
-        // Script/ghostty-commit.
-        .binaryTarget(name: "CGhosttyVT", path: "Frameworks/ghostty-vt.xcframework"),
+        libghosttyVT,
         .target(name: "GhosttyVT", dependencies: ["CGhosttyVT"]),
         .target(
             name: "GhosttyTerminal",
