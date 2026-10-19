@@ -365,6 +365,17 @@ public actor Terminal {
     /// Makes `renderState` follow this terminal, replacing any previous one.
     package func attach(_ renderState: RenderState) {
         self.renderState = renderState
+        renderState.attached { [weak self, weak renderState] in
+            Task { [weak self, weak renderState] in
+                guard let renderState else { return }
+                await self?.recapture(renderState)
+            }
+        }
+        renderState.capture(handle)
+    }
+
+    private func recapture(_ renderState: RenderState) {
+        guard self.renderState === renderState else { return }
         renderState.capture(handle)
     }
 

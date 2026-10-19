@@ -6,19 +6,25 @@ import Synchronization
 ///
 /// libghostty-vt splits a render state update in two (ghostty `render.h`,
 /// "Two-Phase Updates"): `begin_update` needs the terminal, `end_update` only
-/// the render state. The terminal's executor begins an update after every
-/// change; the renderer ends it and copies out the dirty rows. The lock covers
-/// only the render state, so the renderer's hold time is a copy, and the
-/// terminal never waits on shaping or drawing. Several begins before one end
-/// are fine: dirty flags and pending styles accumulate until the renderer
-/// cleans them (ghostty `src/terminal/render.zig`, `endUpdate`).
+/// the render state. The terminal's executor begins updates; the renderer
+/// ends them and copies out the dirty rows. The lock covers only the render
+/// state, so the renderer's hold time is a copy, and the terminal never waits
+/// on shaping or drawing. Several begins before one end are fine: dirty flags
+/// and pending styles accumulate until the renderer cleans them (ghostty
+/// `src/terminal/render.zig`, `endUpdate`).
+///
+/// A begin walks every dirty row, and while output scrolls every row is
+/// dirty, so beginning one per read would rebuild the viewport for every few
+/// hundred bytes. The terminal begins at most one update per frame instead,
+/// as Ghostty's renderer does from its own thread: while the renderer hasn't
+/// taken the last update, a change only marks it behind, and taking a behind
+/// update asks the terminal for a fresh one.
 package final class RenderState: Sendable {
     private struct Native: ~Copyable {
         let state: OpaquePointer
         let rows: OpaquePointer
         let cells: OpaquePointer
-        /// An update was begun that the renderer hasn't taken.
-        var pending = false
+        var pending = Pending.none
         /// A program holds the screen (synchronized output): keep the frame
         /// captured when the hold began.
         var held = false
@@ -34,8 +40,19 @@ package final class RenderState: Sendable {
         }
     }
 
+    private enum Pending {
+        /// The renderer has taken every update.
+        case none
+        /// An update is ready for the renderer.
+        case current
+        /// An update is ready, and the terminal has changed since it began.
+        case behind
+    }
+
     private let native: Mutex<Native>
     private let wake: @Sendable () -> Void
+    /// Asks the attached terminal to begin a fresh update, on its executor.
+    private let recapture = Mutex<(@Sendable () -> Void)?>(nil)
 
     /// `wake` is called, outside the lock, whenever a new update is ready.
     package init(wake: @escaping @Sendable () -> Void) throws(GhosttyError) {
@@ -57,11 +74,20 @@ package final class RenderState: Sendable {
 
     // MARK: Terminal side (the terminal's executor)
 
-    /// Begins an update from the terminal, unless a program holds the screen.
+    func attached(recapture: @escaping @Sendable () -> Void) {
+        self.recapture.withLock { $0 = recapture }
+    }
+
+    /// The terminal changed: begins an update unless a program holds the
+    /// screen or the renderer hasn't taken the last one.
     func capture(_ terminal: OpaquePointer) {
         let terminal = BorrowedTerminal(pointer: terminal)
         let began = native.withLock { native in
             guard !native.held else { return false }
+            if native.pending != .none {
+                native.pending = .behind
+                return false
+            }
             Self.begin(&native, terminal)
             return true
         }
@@ -87,7 +113,7 @@ package final class RenderState: Sendable {
         if ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar) == GHOSTTY_SUCCESS {
             native.scrollbar = Scrollbar(total: scrollbar.total, offset: scrollbar.offset, length: scrollbar.len)
         }
-        native.pending = true
+        native.pending = .current
     }
 
     // MARK: Renderer side
@@ -98,20 +124,23 @@ package final class RenderState: Sendable {
         native.withLock { native in
             var full = GHOSTTY_RENDER_STATE_DIRTY_FULL
             ghostty_render_state_set(native.state, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &full)
-            native.pending = true
+            if native.pending == .none { native.pending = .current }
         }
         wake()
     }
 
     /// Takes what changed since the last call, or nil when nothing did.
     package func takeUpdate() -> RenderUpdate? {
-        native.withLock { native -> RenderUpdate? in
-            guard native.pending else { return nil }
-            native.pending = false
+        let (update, behind) = native.withLock { native -> (RenderUpdate?, Bool) in
+            let pending = native.pending
+            guard pending != .none else { return (nil, false) }
+            native.pending = .none
             ghostty_render_state_end_update(native.state)
             defer { ghostty_render_state_clean(native.state) }
-            return Self.read(native)
+            return (Self.read(native), pending == .behind)
         }
+        if behind { recapture.withLock { $0 }?() }
+        return update
     }
 
     private static func read(_ native: borrowing Native) -> RenderUpdate? {

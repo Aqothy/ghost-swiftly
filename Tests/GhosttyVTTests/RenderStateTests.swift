@@ -34,10 +34,27 @@ struct RenderStateTests {
         #expect(state.takeUpdate() == nil)
     }
 
+    @Test func outputWhileAnUpdateWaitsReachesTheRenderer() async throws {
+        let state = try RenderState {}
+        let terminal = try Terminal(grid: Grid(columns: 10, rows: 3))
+        await terminal.attach(state)
+        _ = state.takeUpdate()
+
+        await terminal.feed(Array("a".utf8))
+        await terminal.feed(Array("b".utf8))
+        var latest = rows(state.takeUpdate())
+        for _ in 0..<2000 where latest[0] != "ab" {
+            try await Task.sleep(for: .milliseconds(1))
+            latest.merge(rows(state.takeUpdate())) { $1 }
+        }
+        #expect(latest[0] == "ab")
+    }
+
     @Test func graphemesTakeTheirUnicodeWidthAsInGhostty() async throws {
         let state = try RenderState {}
         let terminal = try Terminal(grid: Grid(columns: 10, rows: 3))
         await terminal.attach(state)
+        _ = state.takeUpdate()
 
         // U+2764 is narrow until VS16 asks for emoji presentation.
         await terminal.feed(Array("\u{2764}\u{FE0F}x".utf8))
