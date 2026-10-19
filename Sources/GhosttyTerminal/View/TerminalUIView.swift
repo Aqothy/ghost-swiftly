@@ -113,6 +113,57 @@ public final class TerminalUIView: UIView {
 
     public override var inputAccessoryView: UIView? { accessoryBar }
 
+    // MARK: Pointer
+
+    /// The button a trackpad or mouse holds down, so its release and drags
+    /// report the same one. Finger touches go to the gestures instead.
+    private var pointerButton: MouseEvent.Button?
+
+    public override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = Self.pointerTouch(touches), let event else {
+            return super.touchesBegan(touches, with: event)
+        }
+        stopMomentum()
+        let button: MouseEvent.Button = event.buttonMask.contains(.secondary) ? .right : .left
+        pointerButton = button
+        let point = touch.location(in: self)
+        // A right click the program doesn't take offers Copy and Paste, as
+        // on the Mac.
+        surface.send(.mouseButton(.press, button, Self.modifiers(event.modifierFlags), point) { [weak self] in
+            guard button == .right, let self else { return }
+            let menu = interactions.compactMap { $0 as? UIEditMenuInteraction }.first
+            menu?.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: point))
+        })
+    }
+
+    public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = Self.pointerTouch(touches), pointerButton != nil else {
+            return super.touchesMoved(touches, with: event)
+        }
+        surface.send(.mouseMoved(Self.modifiers(event?.modifierFlags ?? []), touch.location(in: self)))
+    }
+
+    public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = Self.pointerTouch(touches), let button = pointerButton else {
+            return super.touchesEnded(touches, with: event)
+        }
+        pointerButton = nil
+        surface.send(.mouseButton(.release, button, Self.modifiers(event?.modifierFlags ?? []),
+                                  touch.location(in: self), local: nil))
+    }
+
+    public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = Self.pointerTouch(touches), let button = pointerButton else {
+            return super.touchesCancelled(touches, with: event)
+        }
+        pointerButton = nil
+        surface.send(.mouseButton(.release, button, [], touch.location(in: self), local: nil))
+    }
+
+    private static func pointerTouch(_ touches: Set<UITouch>) -> UITouch? {
+        touches.first { $0.type == .indirectPointer }
+    }
+
     // MARK: Hardware keyboard
 
     /// Keys whose press this view sent, so their releases go too.

@@ -6,18 +6,26 @@ extension TerminalUIView: @MainActor UIGestureRecognizerDelegate, @MainActor UIE
     func setUpGestures() {
         let scroll = UIPanGestureRecognizer(target: self, action: #selector(scrolled(_:)))
         scroll.maximumNumberOfTouches = 1
-        scroll.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        // Fingers, and a trackpad's or mouse wheel's scrolling. A trackpad
+        // or mouse click is a mouse button (touchesBegan), not a gesture.
+        let direct = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        scroll.allowedTouchTypes = direct
+        scroll.allowedScrollTypesMask = .all
         addGestureRecognizer(scroll)
 
         // A tap only after the pan fails, so a drag never toggles the
         // keyboard (libghostty-spm 06d3b4e).
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
+        tap.allowedTouchTypes = direct
         tap.require(toFail: scroll)
         addGestureRecognizer(tap)
 
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
+        longPress.allowedTouchTypes = direct
         longPress.delegate = self
         addGestureRecognizer(longPress)
+
+        addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hovered(_:))))
 
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
         pinch.delegate = self
@@ -43,6 +51,16 @@ extension TerminalUIView: @MainActor UIGestureRecognizerDelegate, @MainActor UIE
             _ = resignFirstResponder()
         } else {
             _ = becomeFirstResponder()
+        }
+    }
+
+    /// A trackpad or mouse pointer moving with no button down, for programs
+    /// that track motion; leaving the view ends it.
+    @objc private func hovered(_ gesture: UIHoverGestureRecognizer) {
+        let modifiers = Self.modifiers(gesture.modifierFlags)
+        switch gesture.state {
+        case .began, .changed: surface.send(.mouseMoved(modifiers, gesture.location(in: self)))
+        default: surface.send(.mouseMoved(modifiers, nil))
         }
     }
 
