@@ -79,10 +79,12 @@ enum CellClass {
     static func isSymbol(_ cp: UInt32) -> Bool {
         switch cp {
         case 0x2190...0x21FF, 0x2700...0x27BF, 0x1F600...0x1F64F, 0x2600...0x26FF, 0x2460...0x24FF,
-             0x1F100...0x1F1FF, 0x1F300...0x1F5FF, 0x1F680...0x1F6FF:
-            return true
+             0x1F100...0x1F1FF, 0x1F300...0x1F5FF, 0x1F680...0x1F6FF,
+             // The private use areas, which Unicode never changes.
+             0xE000...0xF8FF, 0xF0000...0xFFFFD, 0x100000...0x10FFFD:
+            true
         default:
-            return Unicode.Scalar(cp)?.properties.generalCategory == .privateUse
+            false
         }
     }
 

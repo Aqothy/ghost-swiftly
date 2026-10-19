@@ -74,12 +74,11 @@ final class Shaper {
 
     func addCodepoint(_ codepoint: UInt32, cluster: UInt32) {
         guard let scalar = Unicode.Scalar(codepoint) else { return }
-        let units = Array(String(Character(scalar)).utf16)
-        unichars.append(contentsOf: units)
+        unichars.append(contentsOf: scalar.utf16)
         codepoints.append(Codepoint(codepoint: codepoint, cluster: cluster))
         // CTRunGetStringIndices counts UTF-16 units, so a pair needs a
         // placeholder to keep indexes aligned.
-        if units.count == 2 { codepoints.append(Codepoint(codepoint: 0, cluster: cluster)) }
+        if scalar.utf16.count == 2 { codepoints.append(Codepoint(codepoint: 0, cluster: cluster)) }
     }
 
     // MARK: Shaping
@@ -218,6 +217,8 @@ struct RunIterator {
     let selection: ClosedRange<Int>?
     /// Runs break around the cursor so it can show what's under it.
     let cursorX: Int?
+    /// Past the last non-empty cell: the empty right side isn't shaped.
+    private let end: Int
     private var i = 0
 
     init(grid: FontGrid, shaper: Shaper, cells: [RenderCell], selection: ClosedRange<Int>?, cursorX: Int?) {
@@ -226,12 +227,11 @@ struct RunIterator {
         self.cells = cells
         self.selection = selection
         self.cursorX = cursorX
+        end = (cells.lastIndex { !$0.isEmpty } ?? -1) + 1
     }
 
     // swiftlint:disable:next cyclomatic_complexity function_body_length
     mutating func next() -> TextRun? {
-        // Skip the empty right side of the row.
-        let end = (cells.lastIndex { !$0.isEmpty } ?? -1) + 1
         // Invisible cells draw no glyphs.
         while i < end, cells[i].hasStyling, cells[i].style.invisible { i += 1 }
         if i >= end { return nil }
