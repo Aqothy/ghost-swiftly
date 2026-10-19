@@ -2,7 +2,7 @@
 
 Native Apple terminal views on upstream
 [libghostty-vt](https://github.com/ghostty-org/ghostty), with no Ghostty
-patches. iOS 26 / macOS 26, Swift 6.2.
+patches. iOS 18.5 / macOS 15.6, Swift 6.2.
 
 - `GhosttyVT`: libghostty-vt's terminal (parser, screen, scrollback, modes,
   snapshots, input encoders) behind a Swift actor. No UI.

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "ghost-swiftly",
-    platforms: [.macOS(.v26), .iOS(.v26)],
+    platforms: [.macOS("15.6"), .iOS("18.5")],
     products: [
         .library(name: "GhosttyVT", targets: ["GhosttyVT"]),
         .library(name: "GhosttyTerminal", targets: ["GhosttyTerminal"]),
