@@ -33,7 +33,7 @@ public final class TerminalNSView: NSView {
     }
 
     /// The grid that fits this view at its font size.
-    public var preferredGrid: Grid? { surface.preferredGrid }
+    public var preferredGrid: GridSize? { surface.preferredGrid }
 
     public override var isFlipped: Bool { true }
     public override var acceptsFirstResponder: Bool { true }

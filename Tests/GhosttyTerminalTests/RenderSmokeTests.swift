@@ -7,7 +7,7 @@ import Testing
 struct RenderSmokeTests {
     /// Writes a sample screen to $GHOST_SWIFTLY_SHOTS when set, for looking at.
     @Test func rendersASampleScreen() async throws {
-        let terminal = try Terminal(grid: Grid(columns: 60, rows: 12))
+        let terminal = try Terminal(grid: GridSize(columns: 60, rows: 12))
         var text = "plain \u{1b}[1mbold\u{1b}[0m \u{1b}[3mitalic\u{1b}[0m \u{1b}[4munder\u{1b}[0m \u{1b}[9mstrike\u{1b}[0m\r\n"
         text += "\u{1b}[31mred\u{1b}[32mgreen\u{1b}[34mblue\u{1b}[0m \u{1b}[38;2;255;128;0mtruecolor\u{1b}[0m \u{1b}[7minverse\u{1b}[0m\r\n"
         text += "日本語 wide 🚀 emoji 水\r\n"

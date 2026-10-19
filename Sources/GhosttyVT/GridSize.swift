@@ -1,5 +1,5 @@
 /// A terminal size in cells.
-public struct Grid: Hashable, Sendable, CustomStringConvertible {
+public struct GridSize: Hashable, Sendable, CustomStringConvertible {
     public var columns: UInt16
     public var rows: UInt16
 

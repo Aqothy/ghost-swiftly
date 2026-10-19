@@ -35,11 +35,11 @@ struct SnapshotFixtureTests {
     }
 
     @Test func restoresTheEncodedTerminal() async throws {
-        let terminal = try Terminal(grid: Grid(columns: 10, rows: 5))
+        let terminal = try Terminal(grid: GridSize(columns: 10, rows: 5))
         try await terminal.restore(snapshot: snapshot)
 
         // READY: the screen, cursor and modes are usable before any history.
-        #expect(await terminal.grid == Grid(columns: expected.columns, rows: expected.rows))
+        #expect(await terminal.grid == GridSize(columns: expected.columns, rows: expected.rows))
         let cursor = await terminal.cursor
         #expect(cursor.x == expected.cursorX)
         #expect(cursor.y == expected.cursorY)
@@ -64,7 +64,7 @@ struct SnapshotFixtureTests {
     }
 
     @Test func continuesTheUnfinishedSequenceAfterRestore() async throws {
-        let terminal = try Terminal(grid: Grid(columns: 10, rows: 5))
+        let terminal = try Terminal(grid: GridSize(columns: 10, rows: 5))
         try await terminal.restore(snapshot: snapshot)
         while try await terminal.restoreHistoryPage() != .finished {}
 

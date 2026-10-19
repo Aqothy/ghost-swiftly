@@ -14,19 +14,19 @@ struct SurfaceLayout: Equatable {
     var padding: Int
 
     /// The largest grid that fits the view.
-    var preferredGrid: Grid {
-        Grid(columns: UInt16(clamping: max(1, (viewWidth - 2 * padding) / max(1, cellWidth))),
+    var preferredGrid: GridSize {
+        GridSize(columns: UInt16(clamping: max(1, (viewWidth - 2 * padding) / max(1, cellWidth))),
              rows: UInt16(clamping: max(1, (viewHeight - 2 * padding) / max(1, cellHeight))))
     }
 
     /// The drawable for a grid: the view, grown to fit a grid that doesn't.
-    func drawableSize(for grid: Grid) -> (width: Int, height: Int) {
+    func drawableSize(for grid: GridSize) -> (width: Int, height: Int) {
         (max(viewWidth, Int(grid.columns) * cellWidth + 2 * padding),
          max(viewHeight, Int(grid.rows) * cellHeight + 2 * padding))
     }
 
     /// How much to shrink the drawable to fit the view, 1 when it fits.
-    func fitScale(for grid: Grid) -> Double {
+    func fitScale(for grid: GridSize) -> Double {
         let drawable = drawableSize(for: grid)
         return min(1, Double(viewWidth) / Double(drawable.width), Double(viewHeight) / Double(drawable.height))
     }
@@ -45,10 +45,10 @@ final class TerminalSurface {
     private var scale = 1.0
     private var viewSize = CGSize.zero
     /// The terminal's grid, as the renderer last saw it.
-    private(set) var grid: Grid?
+    private(set) var grid: GridSize?
     /// The grid this view last asked for; holding it means the view sized
     /// the terminal.
-    private var requestedGrid: Grid?
+    private var requestedGrid: GridSize?
     private var inputs: AsyncStream<Input>.Continuation?
     private var focused = false
 
@@ -145,7 +145,7 @@ final class TerminalSurface {
             padding: Int((configuration.padding * scale).rounded()))
     }
 
-    var preferredGrid: Grid? { currentLayout?.preferredGrid }
+    var preferredGrid: GridSize? { currentLayout?.preferredGrid }
 
     private func applyLayout() {
         guard let layout = currentLayout, layout.viewWidth > 0, layout.viewHeight > 0 else { return }
@@ -176,7 +176,7 @@ final class TerminalSurface {
         }
     }
 
-    private func sizeLayer(_ layout: SurfaceLayout, grid: Grid) {
+    private func sizeLayer(_ layout: SurfaceLayout, grid: GridSize) {
         let drawable = layout.drawableSize(for: grid)
         let fit = layout.fitScale(for: grid)
         CATransaction.begin()
@@ -193,7 +193,7 @@ final class TerminalSurface {
         CATransaction.commit()
     }
 
-    private func gridChanged(_ grid: Grid) {
+    private func gridChanged(_ grid: GridSize) {
         self.grid = grid
         if case .host = configuration.gridPolicy { applyLayout() }
     }

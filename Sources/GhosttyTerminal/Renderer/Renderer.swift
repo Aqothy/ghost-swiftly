@@ -41,8 +41,8 @@ actor Renderer {
     private static let blinkInterval: TimeInterval = 0.6
 
     /// The terminal's grid when it changes, for layout.
-    private let onGridChange: @Sendable (Grid) -> Void
-    private var lastGrid: Grid?
+    private let onGridChange: @Sendable (GridSize) -> Void
+    private var lastGrid: GridSize?
 
     /// The fonts to draw with.
     struct FontRequest: Sendable, Equatable {
@@ -53,7 +53,7 @@ actor Renderer {
     /// The first font's metrics, for the view's first layout.
     nonisolated let initialMetrics: Metrics
 
-    init(layer: SharedLayer, font: FontRequest, onGridChange: @escaping @Sendable (Grid) -> Void) throws {
+    init(layer: SharedLayer, font: FontRequest, onGridChange: @escaping @Sendable (GridSize) -> Void) throws {
         let thread = RenderThread(name: "ghostty.renderer")
         self.thread = thread
         self.layer = layer.layer

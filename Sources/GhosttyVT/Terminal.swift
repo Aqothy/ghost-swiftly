@@ -42,7 +42,7 @@ public actor Terminal {
     /// event.
     private var mouseModesStale = true
 
-    public init(grid: Grid, configuration: Configuration = .init()) throws(GhosttyError) {
+    public init(grid: GridSize, configuration: Configuration = .init()) throws(GhosttyError) {
         var handle: OpaquePointer?
         try check(ghostty_terminal_new(nil, &handle, grid.columns, grid.rows))
         guard let handle else { throw .invalidValue }
@@ -116,7 +116,7 @@ public actor Terminal {
     /// Resizes the grid, reflowing the primary screen. `cellWidth` and
     /// `cellHeight` are the cell size in pixels, which only size reports and
     /// image protocols read.
-    public func resize(to grid: Grid, cellWidth: UInt32 = 1, cellHeight: UInt32 = 1) throws(GhosttyError) {
+    public func resize(to grid: GridSize, cellWidth: UInt32 = 1, cellHeight: UInt32 = 1) throws(GhosttyError) {
         try check(ghostty_terminal_resize(handle, grid.columns, grid.rows, cellWidth, cellHeight))
         renderState?.capture(handle)
     }
@@ -209,8 +209,8 @@ public actor Terminal {
 
     // MARK: State
 
-    public var grid: Grid {
-        Grid(columns: value(GHOSTTY_TERMINAL_DATA_COLS, as: UInt16.self),
+    public var grid: GridSize {
+        GridSize(columns: value(GHOSTTY_TERMINAL_DATA_COLS, as: UInt16.self),
              rows: value(GHOSTTY_TERMINAL_DATA_ROWS, as: UInt16.self))
     }
 

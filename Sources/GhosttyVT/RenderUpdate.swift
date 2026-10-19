@@ -174,7 +174,7 @@ package struct RenderUpdate: Sendable {
         case full
     }
 
-    package var grid: Grid
+    package var grid: GridSize
     package var dirty: Dirty
     package var rows: [RenderRow]
     package var cursor: RenderCursor

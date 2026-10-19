@@ -13,5 +13,5 @@ public protocol TerminalIO: AnyObject {
     /// With ``TerminalConfiguration/GridPolicy/host``, ask the host; the view
     /// keeps drawing the host's grid until it resizes the terminal. A resize
     /// requested before typing always arrives before the typed bytes.
-    func requestResize(_ grid: Grid)
+    func requestResize(_ grid: GridSize)
 }

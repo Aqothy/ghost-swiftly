@@ -14,7 +14,7 @@ struct RenderStateTests {
     @Test func updatesCarryDecodedRowsAndNothingWhenIdle() async throws {
         let wakes = Mutex(0)
         let state = try RenderState { wakes.withLock { $0 += 1 } }
-        let terminal = try Terminal(grid: Grid(columns: 10, rows: 3))
+        let terminal = try Terminal(grid: GridSize(columns: 10, rows: 3))
         await terminal.attach(state)
         _ = state.takeUpdate()
 
@@ -36,7 +36,7 @@ struct RenderStateTests {
 
     @Test func outputWhileAnUpdateWaitsReachesTheRenderer() async throws {
         let state = try RenderState {}
-        let terminal = try Terminal(grid: Grid(columns: 10, rows: 3))
+        let terminal = try Terminal(grid: GridSize(columns: 10, rows: 3))
         await terminal.attach(state)
         _ = state.takeUpdate()
 
@@ -52,7 +52,7 @@ struct RenderStateTests {
 
     @Test func graphemesTakeTheirUnicodeWidthAsInGhostty() async throws {
         let state = try RenderState {}
-        let terminal = try Terminal(grid: Grid(columns: 10, rows: 3))
+        let terminal = try Terminal(grid: GridSize(columns: 10, rows: 3))
         await terminal.attach(state)
         _ = state.takeUpdate()
 
@@ -67,7 +67,7 @@ struct RenderStateTests {
 
     @Test func aRenderHoldKeepsTheFrameFromWhenItBegan() async throws {
         let state = try RenderState {}
-        let terminal = try Terminal(grid: Grid(columns: 20, rows: 3))
+        let terminal = try Terminal(grid: GridSize(columns: 20, rows: 3))
         await terminal.attach(state)
         _ = state.takeUpdate()
 

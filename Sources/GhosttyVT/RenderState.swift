@@ -170,7 +170,7 @@ package final class RenderState: Sendable {
         }
 
         return RenderUpdate(
-            grid: Grid(columns: columns, rows: rowCount),
+            grid: GridSize(columns: columns, rows: rowCount),
             dirty: dirty == GHOSTTY_RENDER_STATE_DIRTY_FULL ? .full : .partial,
             rows: rows,
             cursor: RenderCursor(cursor),
