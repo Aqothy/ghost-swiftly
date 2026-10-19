@@ -155,10 +155,6 @@ final class Canvas {
         stroke(path, lineWidth: thickness, color)
     }
 
-    func invert() {
-        for index in pixels.indices { pixels[index] = 255 - pixels[index] }
-    }
-
     func flipHorizontal() {
         let clone = pixels
         for y in 0..<height {
@@ -167,15 +163,5 @@ final class Canvas {
             }
         }
         swap(&clipLeft, &clipRight)
-    }
-
-    func flipVertical() {
-        let clone = pixels
-        for y in 0..<height {
-            for x in 0..<width {
-                pixels[y * width + x] = clone[(height - y - 1) * width + x]
-            }
-        }
-        swap(&clipTop, &clipBottom)
     }
 }

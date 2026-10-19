@@ -41,10 +41,6 @@ enum Corner {
     case tl, tr, bl, br
 }
 
-enum Edge {
-    case top, left, bottom, right
-}
-
 /// Where a figure sits in its cell.
 struct Alignment {
     enum Horizontal { case left, right, center }
@@ -57,10 +53,6 @@ struct Alignment {
     static let lower = Alignment(vertical: .bottom)
     static let left = Alignment(horizontal: .left)
     static let right = Alignment(horizontal: .right)
-    static let upperLeft = Alignment(horizontal: .left, vertical: .top)
-    static let upperRight = Alignment(horizontal: .right, vertical: .top)
-    static let lowerLeft = Alignment(horizontal: .left, vertical: .bottom)
-    static let lowerRight = Alignment(horizontal: .right, vertical: .bottom)
     static let center = Alignment()
 }
 
@@ -69,20 +61,10 @@ struct Fraction {
     let value: Double
 
     static let zero = Fraction(value: 0)
-    static let eighth = Fraction(value: 0.125)
     static let quarter = Fraction(value: 0.25)
-    static let third = Fraction(value: 1.0 / 3.0)
-    static let threeEighths = Fraction(value: 0.375)
     static let half = Fraction(value: 0.5)
-    static let fiveEighths = Fraction(value: 0.625)
-    static let twoThirds = Fraction(value: 2.0 / 3.0)
-    static let threeQuarters = Fraction(value: 0.75)
-    static let sevenEighths = Fraction(value: 0.875)
     static let full = Fraction(value: 1)
 
-    static let eighths = (0...8).map { Fraction(value: Double($0) / 8) }
-    static let quarters = (0...4).map { Fraction(value: Double($0) / 4) }
-    static let thirds = (0...3).map { Fraction(value: Double($0) / 3) }
     static let halves = (0...2).map { Fraction(value: Double($0) / 2) }
 
     /// The position as a block's min (left/top) coordinate. It aligns with
@@ -96,11 +78,6 @@ struct Fraction {
     /// The position as a block's max (right/bottom) coordinate.
     func max(_ size: UInt32) -> Int {
         Int((value * Double(size)).rounded())
-    }
-
-    /// The unrounded position, for paths that don't need pixel alignment.
-    func float(_ size: UInt32) -> Double {
-        value * Double(size)
     }
 }
 
