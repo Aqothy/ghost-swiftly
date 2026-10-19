@@ -3,9 +3,10 @@
 // Ghostty commit, with the encoder side's own formatter output and cursor as
 // the expected values.
 //
-// Run from the repository root after Script/build-xcframework.sh:
+// Run from the repository root with libghostty-vt built from source at the
+// same commit, as maiD's `make ghostty-vt` builds it for the daemon:
 //
-//	PKG_CONFIG_PATH=$PWD/.build/ghostty/zig-out/share/pkgconfig \
+//	PKG_CONFIG_PATH=<maiD>/build/ghostty-vt/_deps/ghostty-src/zig-out/share/pkgconfig \
 //	    go -C Script/snapshot-fixture run . ../../Tests/GhosttyVTTests/Fixtures
 package main
 

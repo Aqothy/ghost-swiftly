@@ -5,7 +5,7 @@
 #
 #   Script/upstream-diff.sh <new-commit>
 #
-# Uses the checkout Script/build-xcframework.sh made in .build/ghostty.
+# Keeps a Ghostty clone in .build/ghostty.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)

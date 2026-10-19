@@ -1,5 +1,4 @@
 .build/
 .swiftpm/
-Frameworks/
 *.xcuserstate
 xcuserdata/

@@ -10,7 +10,7 @@ import sys
 
 root = pathlib.Path(__file__).resolve().parent.parent
 ghostty = pathlib.Path(sys.argv[1])
-commit = (root / "Script/ghostty-commit").read_text().strip()
+commit = re.search(r'^let ghosttyCommit = "(\w+)"$', (root / "Package.swift").read_text(), re.M).group(1)
 source = (ghostty / "src/input/keycodes.zig").read_text()
 key_swift = (root / "Sources/GhosttyVT/Key.swift").read_text()
 keys = set(re.findall(r"^    case (\w+)$", key_swift, re.M))
