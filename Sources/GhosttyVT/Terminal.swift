@@ -22,7 +22,7 @@ public actor Terminal {
     /// Effects in the order the program produced them. One consumer.
     public nonisolated let events: AsyncStream<TerminalEvent>
 
-    private var handle: OpaquePointer
+    var handle: OpaquePointer
     private let effects: Effects
     /// History still to restore from the last snapshot. It borrows `handle`.
     private var restoring: SnapshotRestore?
@@ -31,7 +31,9 @@ public actor Terminal {
     private let mouseEncoder: OpaquePointer
     private let mouseEvent: OpaquePointer
     /// The view drawing this terminal, if any.
-    private var renderState: RenderState?
+    var renderState: RenderState?
+    /// Mouse buttons, scroll remainder and the selection gesture.
+    let pointer: Pointer
     /// Counts render holds so an expired timer can't end a later hold.
     private var renderHoldGeneration = 0
     /// The host's colors, re-applied over a restored snapshot's.
@@ -71,6 +73,17 @@ public actor Terminal {
             ghostty_terminal_free(handle)
             throw .outOfMemory
         }
+        let pointer: Pointer
+        do {
+            pointer = try Pointer()
+        } catch {
+            ghostty_key_encoder_free(keyEncoder)
+            ghostty_key_event_free(keyEvent)
+            ghostty_mouse_encoder_free(mouseEncoder)
+            ghostty_mouse_event_free(mouseEvent)
+            ghostty_terminal_free(handle)
+            throw error
+        }
         var trackLastCell = true
         ghostty_mouse_encoder_setopt(mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_TRACK_LAST_CELL, &trackLastCell)
 
@@ -82,6 +95,7 @@ public actor Terminal {
         self.keyEvent = keyEvent
         self.mouseEncoder = mouseEncoder
         self.mouseEvent = mouseEvent
+        self.pointer = pointer
         effects.install(on: handle)
         effects.renderHold = { [weak self] held in
             // Effects only fire inside calls on `handle`, on this executor.
@@ -92,6 +106,7 @@ public actor Terminal {
     isolated deinit {
         // The decoder borrows the terminal, so it goes first.
         restoring = nil
+        pointer.free(handle)
         ghostty_terminal_free(handle)
         ghostty_key_encoder_free(keyEncoder)
         ghostty_key_event_free(keyEvent)
@@ -130,6 +145,8 @@ public actor Terminal {
         let restore = try SnapshotRestore(snapshot: snapshot)
         let restored = try restore.ready()
         restoring = nil
+        // The gesture tracks cells of the terminal being replaced.
+        pointer.reset(handle)
         ghostty_terminal_free(handle)
         handle = restored
         restoring = restore
