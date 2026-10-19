@@ -54,6 +54,11 @@ final class TerminalSurface {
     private var visible = true
     private var preedit: Preedit?
     private var autoscroll: Task<Void, Never>?
+    /// Magnification of a host grid drawn scaled down to fit: 1 shows it
+    /// all, up to its native size.
+    private var zoom = 1.0
+    /// Where the zoomed drawing sits, in view points (zero or negative).
+    private var panOffset = CGPoint.zero
     /// Asks the user whether to paste text that could run commands they
     /// didn't see; the platform view shows the prompt.
     var confirmUnsafePaste: (@MainActor (String) async -> Bool)?
@@ -210,21 +215,49 @@ final class TerminalSurface {
         }
     }
 
+    /// The drawable's scale in the view: the fit, magnified by the zoom up
+    /// to native size.
+    private func displayScale(_ layout: SurfaceLayout, _ grid: GridSize) -> Double {
+        min(1, layout.fitScale(for: grid) * zoom)
+    }
+
     private func sizeLayer(_ layout: SurfaceLayout, grid: GridSize) {
         let drawable = layout.drawableSize(for: grid)
-        let fit = layout.fitScale(for: grid)
+        let shown = displayScale(layout, grid)
+        let size = CGSize(width: Double(drawable.width) / scale * shown, height: Double(drawable.height) / scale * shown)
+        // Keep a zoomed drawing covering the view.
+        panOffset.x = min(0, max(viewSize.width - size.width, panOffset.x))
+        panOffset.y = min(0, max(viewSize.height - size.height, panOffset.y))
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         // Unscaled, a drawable that briefly lags a live resize is clipped
         // rather than stretched, as in Ghostty; a host grid that doesn't fit
         // is scaled down to the layer.
-        metalLayer.contentsGravity = fit < 1 ? .resize : .topLeft
+        metalLayer.contentsGravity = shown < 1 ? .resize : .topLeft
         metalLayer.drawableSize = CGSize(width: drawable.width, height: drawable.height)
-        metalLayer.frame = CGRect(
-            x: 0, y: 0,
-            width: Double(drawable.width) / scale * fit,
-            height: Double(drawable.height) / scale * fit)
+        metalLayer.frame = CGRect(origin: panOffset, size: size)
         CATransaction.commit()
+    }
+
+    /// Pinch zoom of a host grid drawn scaled down, around a view point.
+    func zoom(by factor: Double, around point: CGPoint) {
+        guard let layout = currentLayout, let grid = drawnGrid else { return }
+        let fit = layout.fitScale(for: grid)
+        guard fit < 1 else { return }
+        let before = displayScale(layout, grid)
+        zoom = min(1 / fit, max(1, zoom * factor))
+        let ratio = displayScale(layout, grid) / before
+        // Keep the content under the fingers in place.
+        panOffset = CGPoint(x: point.x - (point.x - panOffset.x) * ratio, y: point.y - (point.y - panOffset.y) * ratio)
+        sizeLayer(layout, grid: grid)
+    }
+
+    /// Moves a zoomed drawing by a translation in view points.
+    func pan(by translation: CGPoint) {
+        guard let layout = currentLayout, let grid = drawnGrid, zoom > 1 else { return }
+        panOffset.x += translation.x
+        panOffset.y += translation.y
+        sizeLayer(layout, grid: grid)
     }
 
     private func screenChanged(_ screen: DrawnScreen) {
@@ -236,7 +269,7 @@ final class TerminalSurface {
     /// Drawable pixels per view point, including a host grid's scaling.
     private var pixelsPerPoint: Double {
         guard let layout = currentLayout, let grid = drawnGrid else { return scale }
-        return scale / layout.fitScale(for: grid)
+        return scale / displayScale(layout, grid)
     }
 
     /// A point in the view as surface pixels, which the mouse encoder and
