@@ -3,8 +3,8 @@ import Foundation
 import PackageDescription
 
 // libghostty-vt as published with this release; Script/release.sh sets both.
-let releaseURL = "https://github.com/Aqothy/ghost-swiftly/releases/download/unreleased/ghostty-vt.xcframework.zip"
-let releaseChecksum = "unreleased"
+let releaseURL = "https://github.com/Aqothy/ghost-swiftly/releases/download/0.1.0/ghostty-vt.xcframework.zip"
+let releaseChecksum = "28ac920c6b18940c6d788463808a2e92b6841ef13ae3c06b05ba68fb425346b7"
 
 // Script/build-xcframework.sh builds it into Frameworks/ from upstream Ghostty
 // at Script/ghostty-commit. A checkout without that build, as when another
