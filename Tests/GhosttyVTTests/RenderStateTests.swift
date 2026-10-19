@@ -34,6 +34,20 @@ struct RenderStateTests {
         #expect(state.takeUpdate() == nil)
     }
 
+    @Test func graphemesTakeTheirUnicodeWidthAsInGhostty() async throws {
+        let state = try RenderState {}
+        let terminal = try Terminal(grid: Grid(columns: 10, rows: 3))
+        await terminal.attach(state)
+
+        // U+2764 is narrow until VS16 asks for emoji presentation.
+        await terminal.feed(Array("\u{2764}\u{FE0F}x".utf8))
+        let update = try #require(state.takeUpdate())
+        let row = try #require(update.rows.first { $0.y == 0 })
+        #expect(row.cells[0].content == .grapheme(0x2764, [0xFE0F]))
+        #expect(row.cells[0].wide == .wide)
+        #expect(row.cells[2].codepoint == 0x78)
+    }
+
     @Test func aRenderHoldKeepsTheFrameFromWhenItBegan() async throws {
         let state = try RenderState {}
         let terminal = try Terminal(grid: Grid(columns: 20, rows: 3))

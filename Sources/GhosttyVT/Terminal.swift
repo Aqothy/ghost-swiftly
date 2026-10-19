@@ -48,6 +48,12 @@ public actor Terminal {
         guard let handle else { throw .invalidValue }
         var limit = configuration.scrollbackLimit
         ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &limit)
+        // Ghostty.app's defaults (termio/Termio.zig init): grapheme-width-method
+        // unicode and cursor-style-blink unset. A snapshot carries its own.
+        for mode in [Mode.graphemeCluster, .cursorBlinking] {
+            var config = GhosttyTerminalModeConfig(mode: mode.ghostty, value: true)
+            ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &config)
+        }
 
         var keyEncoder: OpaquePointer?
         var keyEvent: OpaquePointer?

@@ -15,10 +15,12 @@ public struct Mode: Sendable, Hashable {
     }
 
     public static let cursorKeys = Mode(dec: 1)
+    public static let cursorBlinking = Mode(dec: 12)
     public static let cursorVisible = Mode(dec: 25)
     public static let focusEvents = Mode(dec: 1004)
     public static let alternateScroll = Mode(dec: 1007)
     public static let alternateScreen = Mode(dec: 1049)
     public static let bracketedPaste = Mode(dec: 2004)
     public static let synchronizedOutput = Mode(dec: 2026)
+    public static let graphemeCluster = Mode(dec: 2027)
 }
