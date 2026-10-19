@@ -49,6 +49,7 @@ final class TerminalSurface {
     /// The grid this view last asked for; holding it means the view sized
     /// the terminal.
     private var requestedGrid: GridSize?
+    private var reportedPreferredGrid: GridSize?
     private var inputs: AsyncStream<Input>.Continuation?
     private(set) var focused = false
     private var visible = true
@@ -191,6 +192,11 @@ final class TerminalSurface {
         let padding = layout.padding
         if let renderer {
             Task { await renderer.setPadding(.init(top: padding, bottom: padding, right: padding, left: padding)) }
+        }
+
+        if layout.preferredGrid != reportedPreferredGrid {
+            reportedPreferredGrid = layout.preferredGrid
+            io?.preferredGridChanged(layout.preferredGrid)
         }
 
         switch configuration.gridPolicy {
