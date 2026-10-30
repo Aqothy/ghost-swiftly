@@ -55,8 +55,8 @@ public final class TerminalUIView: UIView {
     }
 
     /// The keyboard and its accessory bar move in steps, each one a layout;
-    /// a view holding a host's size asks for it once they stop rather than
-    /// at every step.
+    /// a host's view reports its grid once they stop rather than at every
+    /// step.
     @objc private func keyboardWillMove() { surface.setSizeSettling(true) }
     @objc private func keyboardDidMove() { surface.setSizeSettling(false) }
 

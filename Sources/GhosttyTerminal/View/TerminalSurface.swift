@@ -46,12 +46,10 @@ final class TerminalSurface {
     private var viewSize = CGSize.zero
     /// The screen as the renderer last drew it.
     private(set) var screen: DrawnScreen?
-    /// The grid this view last asked for or reported; the host drawing it
-    /// means this view sizes the terminal.
-    private var requestedGrid: GridSize?
-    private var reportedPreferredGrid: GridSize?
-    /// While the view's size is animating (the iOS keyboard), a view that
-    /// holds the size draws each step but asks the host once, at the end.
+    /// The grid this view last reported to the I/O.
+    private var reportedGrid: GridSize?
+    /// While the view's size is animating (the iOS keyboard), a host's view
+    /// draws each step but reports its grid once, at the end.
     private var sizeSettling = false
     private var inputs: AsyncStream<Input>.Continuation?
     /// Receives what the program asks of the terminal while this view shows it.
@@ -213,16 +211,11 @@ final class TerminalSurface {
             Task { await renderer.setPadding(.init(top: padding, bottom: padding, right: padding, left: padding)) }
         }
 
-        if layout.preferredGrid != reportedPreferredGrid {
-            reportedPreferredGrid = layout.preferredGrid
-            io?.preferredGridChanged(layout.preferredGrid)
-        }
-
         switch configuration.gridPolicy {
         case .fitView:
             let preferred = layout.preferredGrid
-            if preferred != requestedGrid {
-                requestedGrid = preferred
+            if preferred != reportedGrid {
+                reportedGrid = preferred
                 let cellWidth = UInt32(layout.cellWidth)
                 let cellHeight = UInt32(layout.cellHeight)
                 Task { try? await terminal.resize(to: preferred, cellWidth: cellWidth, cellHeight: cellHeight) }
@@ -231,13 +224,9 @@ final class TerminalSurface {
             sizeLayer(layout, grid: preferred)
         case .host:
             let preferred = layout.preferredGrid
-            if !sizeSettling, preferred != requestedGrid {
-                // Keep the host in step while this view holds the size: the
-                // host draws the grid it last asked for.
-                if let grid = screen?.grid, grid == requestedGrid { io?.requestResize(preferred) }
-                // A host may also grant the grid the view attaches with;
-                // drawing that grid shows this view holds the size.
-                requestedGrid = preferred
+            if !sizeSettling, preferred != reportedGrid {
+                reportedGrid = preferred
+                io?.requestResize(preferred)
             }
             sizeLayer(layout, grid: screen?.grid ?? preferred)
         }
@@ -363,6 +352,7 @@ final class TerminalSurface {
             }
             if let bytes { typed(bytes) }
         case .mouseButton(let action, let button, let modifiers, let point, let local):
+            if action == .press { io?.activate() }
             guard let geometry = mouseGeometry else { return }
             let position = surfacePosition(point)
             let outcome = await terminal.mouseButton(
@@ -397,20 +387,10 @@ final class TerminalSurface {
         }
     }
 
-    /// Sends typed bytes; typing takes the size first.
     private func typed(_ bytes: [UInt8]) {
         guard !bytes.isEmpty else { return }
-        claimSizeBeforeTyping()
+        io?.activate()
         io?.send(bytes)
-    }
-
-    /// Typing takes the size: a view drawing another view's grid asks for
-    /// its own before the keystroke reaches the program.
-    private func claimSizeBeforeTyping() {
-        guard case .host = configuration.gridPolicy, let preferred = preferredGrid, screen?.grid != preferred
-        else { return }
-        requestedGrid = preferred
-        io?.requestResize(preferred)
     }
 
     /// Scrolls while a selection drag is past the top or bottom, every 15 ms
@@ -451,7 +431,13 @@ final class TerminalSurface {
         guard focused != self.focused else { return }
         self.focused = focused
         if let renderer { Task { await renderer.setFocused(focused) } }
+        if focused { io?.activate() }
         send(.focus(focused))
+    }
+
+    /// A tap that isn't a mouse button (iOS) still activates the view.
+    func tapped() {
+        io?.activate()
     }
 
     /// Off screen (occluded, or the app in the background): stop drawing,
@@ -462,8 +448,8 @@ final class TerminalSurface {
         if let renderer { Task { await renderer.setVisible(visible) } }
     }
 
-    /// The view's size is animating; when it stops, a view holding the size
-    /// asks the host for the grid it settled at.
+    /// The view's size is animating; when it stops, a host's view reports
+    /// the grid it settled at.
     func setSizeSettling(_ settling: Bool) {
         guard settling != sizeSettling else { return }
         sizeSettling = settling

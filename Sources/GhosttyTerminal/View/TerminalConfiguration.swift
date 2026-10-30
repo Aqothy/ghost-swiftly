@@ -54,10 +54,10 @@ public struct TerminalConfiguration: Sendable, Equatable {
         /// The view's grid is the program's: a local PTY or SSH. The view
         /// resizes its terminal to fit and tells the I/O.
         case fitView
-        /// A remote host owns the grid. The view draws the host's grid,
-        /// scaled down when it doesn't fit, and asks the host to resize to
-        /// its own grid only when the user types into it (or its fit changes
-        /// while it holds the size).
+        /// A remote host owns the grid, shared by every view of the program,
+        /// and sizes it to the view the user is using. The view draws the
+        /// host's grid, scaled down when it doesn't fit, and tells the I/O
+        /// the grid that fits it and when the user activates it.
         case host
     }
 }

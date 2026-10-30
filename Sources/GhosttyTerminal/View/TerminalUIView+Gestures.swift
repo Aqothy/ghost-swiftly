@@ -47,6 +47,7 @@ extension TerminalUIView: @MainActor UIGestureRecognizerDelegate, @MainActor UIE
     }
 
     @objc private func tapped(_ gesture: UITapGestureRecognizer) {
+        surface.tapped()
         if isFirstResponder {
             _ = resignFirstResponder()
         } else {
