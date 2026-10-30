@@ -27,6 +27,9 @@ public final class TerminalUIView: UIView {
     private lazy var accessoryBar = TerminalAccessoryBar(view: self)
     var momentum: CADisplayLink?
     var momentumVelocity = CGPoint.zero
+    /// UIKit is moving the keyboard: between its will- and did-change-frame
+    /// notifications.
+    private var keyboardMoving = false
 
     public init(terminal: Terminal, io: TerminalIO?, configuration: TerminalConfiguration = .init()) {
         surface = TerminalSurface(terminal: terminal, io: io, configuration: configuration)
@@ -57,8 +60,15 @@ public final class TerminalUIView: UIView {
     /// The keyboard and its accessory bar move in steps, each one a layout;
     /// a host's view reports its grid once they stop rather than at every
     /// step.
-    @objc private func keyboardWillMove() { surface.setSizeSettling(true) }
-    @objc private func keyboardDidMove() { surface.setSizeSettling(false) }
+    @objc private func keyboardWillMove() {
+        keyboardMoving = true
+        surface.setSizeSettling(true)
+    }
+
+    @objc private func keyboardDidMove() {
+        keyboardMoving = false
+        surface.setSizeSettling(false)
+    }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -92,25 +102,23 @@ public final class TerminalUIView: UIView {
     public override var canBecomeFirstResponder: Bool { true }
 
     public override func becomeFirstResponder() -> Bool {
-        // The keyboard and its bar move in, a layout per step, starting
-        // before UIKit posts the keyboard notification.
-        let showsKeyboard = !isFirstResponder
-        if showsKeyboard { surface.setSizeSettling(true) }
-        guard super.becomeFirstResponder() else {
-            if showsKeyboard { surface.setSizeSettling(false) }
-            return false
-        }
+        // UIKit swaps the input views inside this call, posting the keyboard
+        // notification when the keyboard will move, and none when the
+        // accessory bar alone comes back. The grid waits through the call
+        // and, after it, only for a move UIKit announced.
+        surface.setSizeSettling(true)
+        let became = super.becomeFirstResponder()
+        surface.setSizeSettling(keyboardMoving)
+        guard became else { return false }
         surface.setFocused(true)
         return true
     }
 
     public override func resignFirstResponder() -> Bool {
-        let hidesKeyboard = isFirstResponder
-        if hidesKeyboard { surface.setSizeSettling(true) }
-        guard super.resignFirstResponder() else {
-            if hidesKeyboard { surface.setSizeSettling(false) }
-            return false
-        }
+        surface.setSizeSettling(true)
+        let resigned = super.resignFirstResponder()
+        surface.setSizeSettling(keyboardMoving)
+        guard resigned else { return false }
         commitMarkedText()
         control.reset()
         surface.setFocused(false)
