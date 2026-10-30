@@ -453,6 +453,9 @@ final class StickyModifier {
 final class TerminalAccessoryBar: UIInputView {
     private weak var view: TerminalUIView?
     private let controlButton = UIButton(configuration: .gray())
+    /// Narrow, so "esc" stays on one line among eight equal keys on an
+    /// iPhone.
+    private static let keyInsets = NSDirectionalEdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4)
 
     private enum Action {
         case key(Key)
@@ -477,7 +480,7 @@ final class TerminalAccessoryBar: UIInputView {
             } else {
                 button.configuration?.title = title
             }
-            button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8)
+            button.configuration?.contentInsets = Self.keyInsets
             button.addAction(UIAction { [weak self] _ in
                 guard let view = self?.view else { return }
                 switch action {
@@ -509,7 +512,7 @@ final class TerminalAccessoryBar: UIInputView {
         let state = view?.control.state ?? .off
         controlButton.configuration = state == .off ? .gray() : state == .once ? .tinted() : .filled()
         controlButton.configuration?.title = "ctrl"
-        controlButton.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8)
+        controlButton.configuration?.contentInsets = Self.keyInsets
     }
 }
 #endif
