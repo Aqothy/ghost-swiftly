@@ -13,8 +13,8 @@ extension TerminalUIView: @MainActor UIGestureRecognizerDelegate, @MainActor UIE
         scroll.allowedScrollTypesMask = .all
         addGestureRecognizer(scroll)
 
-        // A tap only after the pan fails, so a drag never toggles the
-        // keyboard (libghostty-spm 06d3b4e).
+        // A tap only after the pan fails, so a drag never opens the
+        // keyboard or clicks (libghostty-spm 06d3b4e).
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         tap.allowedTouchTypes = direct
         tap.require(toFail: scroll)
@@ -46,12 +46,18 @@ extension TerminalUIView: @MainActor UIGestureRecognizerDelegate, @MainActor UIE
             && gestureRecognizer.numberOfTouches > 1
     }
 
+    /// A tap opens the keyboard; with it open, a tap is a left click there,
+    /// as a trackpad's. The accessory bar hides the keyboard.
     @objc private func tapped(_ gesture: UITapGestureRecognizer) {
-        surface.tapped()
         if isFirstResponder {
-            _ = resignFirstResponder()
-        } else {
-            _ = becomeFirstResponder()
+            stopMomentum()
+            // The press activates the view.
+            let point = gesture.location(in: self)
+            surface.send(.mouseButton(.press, .left, [], point, local: nil))
+            surface.send(.mouseButton(.release, .left, [], point, local: nil))
+        } else if !becomeFirstResponder() {
+            // Focusing activates the view; a tap that can't focus still does.
+            surface.tapped()
         }
     }
 

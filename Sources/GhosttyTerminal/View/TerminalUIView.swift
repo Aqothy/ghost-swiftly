@@ -8,9 +8,9 @@ import UIKit
 /// Keys come from the software keyboard through UITextInput (with input
 /// method composition drawn as Ghostty's preedit), from a hardware keyboard
 /// through presses, and from an accessory bar with Escape, Tab, a sticky
-/// Control and arrows. One finger scrolls, a tap shows or hides the
-/// keyboard, a long press selects, and a pinch zooms a host grid drawn
-/// scaled down.
+/// Control, arrows and a key that hides the keyboard. One finger scrolls, a
+/// tap shows the keyboard and, once it's shown, clicks, a long press
+/// selects, and a pinch zooms a host grid drawn scaled down.
 public final class TerminalUIView: UIView {
     let surface: TerminalSurface
     private var sceneObservers: [Task<Void, Never>] = []
@@ -448,26 +448,43 @@ final class StickyModifier {
     }
 }
 
-/// The keyboard's accessory bar: Escape, Tab, Control and arrows.
+/// The keyboard's accessory bar: Escape, Tab, Control, arrows and a key
+/// that hides the keyboard.
 final class TerminalAccessoryBar: UIInputView {
     private weak var view: TerminalUIView?
     private let controlButton = UIButton(configuration: .gray())
+
+    private enum Action {
+        case key(Key)
+        case control
+        case hideKeyboard
+    }
 
     init(view: TerminalUIView) {
         self.view = view
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 44), inputViewStyle: .keyboard)
         allowsSelfSizing = true
-        let keys: [(String, Key?)] = [
-            ("esc", .escape), ("tab", .tab), ("ctrl", nil), ("←", .arrowLeft), ("↑", .arrowUp),
-            ("↓", .arrowDown), ("→", .arrowRight),
+        let keys: [(String, Action)] = [
+            ("esc", .key(.escape)), ("tab", .key(.tab)), ("ctrl", .control), ("←", .key(.arrowLeft)),
+            ("↑", .key(.arrowUp)), ("↓", .key(.arrowDown)), ("→", .key(.arrowRight)),
+            ("Hide Keyboard", .hideKeyboard),
         ]
-        let buttons = keys.map { title, key -> UIButton in
-            let button = key == nil ? controlButton : UIButton(configuration: .gray())
-            button.configuration?.title = title
+        let buttons = keys.map { title, action -> UIButton in
+            let button = if case .control = action { controlButton } else { UIButton(configuration: .gray()) }
+            if case .hideKeyboard = action {
+                button.configuration?.image = UIImage(systemName: "keyboard.chevron.compact.down")
+                button.accessibilityLabel = title
+            } else {
+                button.configuration?.title = title
+            }
             button.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8)
             button.addAction(UIAction { [weak self] _ in
                 guard let view = self?.view else { return }
-                if let key { view.sendKey(key) } else { view.control.tap() }
+                switch action {
+                case .key(let key): view.sendKey(key)
+                case .control: view.control.tap()
+                case .hideKeyboard: _ = view.resignFirstResponder()
+                }
             }, for: .touchUpInside)
             return button
         }
