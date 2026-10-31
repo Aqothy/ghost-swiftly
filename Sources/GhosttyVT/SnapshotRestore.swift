@@ -24,6 +24,17 @@ final class SnapshotRestore {
             bytes.deallocate()
             throw GhosttyError(result)
         }
+        // The renderer draws no Kitty images (see Terminal.init); zero keeps
+        // the restored terminal from storing them (ghostty snapshot.h,
+        // GHOSTTY_SNAPSHOT_DECODER_OPT_KITTY_IMAGE_STORAGE_LIMIT).
+        var noImages: UInt64 = 0
+        let limit = ghostty_snapshot_decoder_set(
+            decoder, GHOSTTY_SNAPSHOT_DECODER_OPT_KITTY_IMAGE_STORAGE_LIMIT, &noImages)
+        guard limit == GHOSTTY_SUCCESS else {
+            ghostty_snapshot_decoder_free(decoder)
+            bytes.deallocate()
+            throw GhosttyError(limit)
+        }
         self.bytes = bytes
         self.decoder = decoder
     }
@@ -40,12 +51,20 @@ final class SnapshotRestore {
         return terminal
     }
 
+    /// Decodes up to and including the next history page. Kitty image
+    /// records can arrive between pages; with storage off they are
+    /// validated and dropped, so they're passed over.
     func next() throws(GhosttyError) -> HistoryPage {
-        let result = ghostty_snapshot_decoder_next(decoder)
-        if result == GHOSTTY_NO_VALUE { return .finished }
-        try check(result)
-        var rows = 0
-        try check(ghostty_snapshot_decoder_get(decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_ROWS, &rows))
-        return rows == 0 ? .dropped : .restored(rows: rows)
+        while true {
+            let result = ghostty_snapshot_decoder_next(decoder)
+            if result == GHOSTTY_NO_VALUE { return .finished }
+            try check(result)
+            var kind = GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE
+            try check(ghostty_snapshot_decoder_get(decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND, &kind))
+            guard kind == GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE else { continue }
+            var rows = 0
+            try check(ghostty_snapshot_decoder_get(decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_ROWS, &rows))
+            return rows == 0 ? .dropped : .restored(rows: rows)
+        }
     }
 }

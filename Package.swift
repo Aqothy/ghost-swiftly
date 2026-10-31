@@ -5,8 +5,8 @@ import PackageDescription
 // (.github/workflows/release-tip.yml, build-lib-vt-xcframework).
 // Script/bump-ghostty.sh verifies Ghostty's signature and sets these and
 // BuildInfo.commit together.
-let ghosttyCommit = "81598385d608dda4946093d6d6a234d204a2f225"
-let ghosttyChecksum = "06d88f611c9496f9d6e285156ddd515a6d9420383e024f279ec904a46ff1c659"
+let ghosttyCommit = "f54340ad77814fe319d136e5e915d6a48de8dd23"
+let ghosttyChecksum = "e70bb38e45b831a4fd28c6e3be40f3a4d0cf62eeced9c0f1fd255a0e19606379"
 
 let package = Package(
     name: "ghost-swiftly",

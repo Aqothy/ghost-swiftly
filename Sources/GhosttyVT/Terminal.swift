@@ -52,9 +52,14 @@ public actor Terminal {
         // of its own, not a mode default. A snapshot carries its own.
         var grapheme = GhosttyTerminalModeConfig(mode: Mode.graphemeCluster.ghostty, value: true)
         var blink = true
+        // The renderer draws no Kitty images, so storing them would only
+        // hold pixels; zero turns the protocol off (ghostty terminal.h,
+        // GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT).
+        var noImages: UInt64 = 0
         do throws(GhosttyError) {
             try check(ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &grapheme))
             try check(ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_BLINK, &blink))
+            try check(ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT, &noImages))
         } catch {
             ghostty_terminal_free(handle)
             throw error

@@ -6,5 +6,5 @@ public enum BuildInfo {
     /// only compatible between libraries built from the same commit (ghostty
     /// snapshot.h: "format version 1 ... does not yet carry a
     /// binary-compatibility guarantee").
-    public static let commit = "81598385d608dda4946093d6d6a234d204a2f225"
+    public static let commit = "f54340ad77814fe319d136e5e915d6a48de8dd23"
 }
